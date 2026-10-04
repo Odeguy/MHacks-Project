@@ -6,6 +6,7 @@ import { text } from "./validation";
 export default db;
 export * from "./design";
 export * from "./play";
+export * from "./library";
 export * from "./views";
 export const setName = db.reducer({ name: t.string() }, (ctx, a) =>
   run(() => {

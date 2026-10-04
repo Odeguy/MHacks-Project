@@ -2,13 +2,13 @@
 
 Browser card games built from structured game definitions. React/Vite renders the client; a TypeScript SpacetimeDB module owns definitions, published versions, persistent decks, lobbies, and authoritative matches.
 
-The backend implements the planning document's creation tools and a bounded rule engine. The frontend now includes the collection, game details, design studio, saved decks, deck workshop, and lobby/table layouts, with a grayscale WebGL background and Motion animations. The model/provider and Fetch integration are separate choices. There is no AI referee.
+The backend implements the planning document's creation tools and a bounded rule engine. The frontend now includes the collection, game details, design studio, saved decks, deck workshop, and lobby/table layouts, with a grayscale WebGL background and Motion animations. A Node service uses Grok to design validated game drafts. There is no AI referee or FetchAI integration.
 
 The interface subscribes to SpacetimeDB for published games, saved decks, drafts, rooms, and matches. Deck edits, duplication, draft saving and publishing, lobby readiness, and match actions call the backend reducers. The first-person table keeps hands separate from the field, receives only permitted card data, and follows the published version's rules. On an empty database, use **Add starter games** to create three playable examples and saved decks.
 
 New manual game designs and saved decks start without cards. Numeric editor fields accept unfinished input while typing and apply their bounds on blur or Enter. Room discovery lists occupied lobbies and active matches. Leaving a lobby page removes your membership; joining or creating another lobby leaves the previous one. Disconnected lobby members get a 30-second reconnection grace period. Counts and host ownership update when members leave, and empty lobbies close. Active-match membership remains available for reconnection.
 
-Cards use pastel fills, dark text, and white collection surfaces by default. The **Dark cards / Light cards** header toggle switches card appearance. Continuous hue sliders change card colors; these appearance preferences and favorites stay in the browser. Unsaved design settings are locally autosaved; **Save draft** stores them in SpacetimeDB, and **Saved drafts** resumes them. The manual designer starts from a bounded card/rule template; prompt-based AI generation remains to be implemented.
+Cards use pastel fills, dark text, and white collection surfaces by default. The **Dark cards / Light cards** header toggle switches card appearance. Continuous hue sliders change card colors; these appearance preferences and favorites stay in the browser. Unsaved design settings are locally autosaved; **Save draft** stores them in SpacetimeDB, and **Saved drafts** resumes them. The manual designer starts from a bounded card/rule template; **Design with Grok** generates a separate draft for review and application to the editor.
 
 **Create game** has General, Card types, Cards, Phases, and Field sections. Configure health and its name, hand limits, fighter and effect types, card stats and copy limits, executable effects, ordered phase actions, and slot permissions. Drawing and playing are controlled by phase action limits; turns do not automatically draw cards. Paint slot types on the colored player areas; each player receives that layout, with hands kept separate. **Edit game rules** opens the owning draft from a game or deck. Publishing creates an immutable version: existing decks keep their original rules and new decks use the newly published version.
 
@@ -59,3 +59,9 @@ Useful commands:
 | `npm run build`              | Type-check and build the frontend                       |
 
 If Vite cannot execute esbuild while loading its configuration in a restricted environment, use `npm run build -- --configLoader runner`.
+
+## Grok game creation
+
+The Create game editor can generate a validated draft using Grok's creation tools.
+Add `XAI_API_KEY` to `agent/.env`, then run `npm run agent:dev` alongside Vite.
+See [agent setup and tools](agent/README.md) for the full local workflow.

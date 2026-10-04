@@ -72,6 +72,11 @@ export const gameVersion = table(
     publishedAt: t.timestamp(),
   },
 );
+// Keep immutable versions available to existing decks and matches after deletion.
+export const deletedGame = table(
+  { name: "deleted_game", public: true },
+  { gameId: t.u64().primaryKey(), deletedAt: t.timestamp() },
+);
 export const savedDeck = table(
   { name: "saved_deck" },
   {
@@ -221,6 +226,7 @@ const spacetimedb = schema({
   connection,
   gameDraft,
   publishedGame,
+  deletedGame,
   gameVersion,
   savedDeck,
   room,

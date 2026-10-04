@@ -58,7 +58,7 @@ Resource configuration uses `updateResourceDesignerDraft` with `resources` along
 
 `match_resource_balances` stores each player's independent balances atomically with match updates. Membership-filtered `my_match_resource_balances` exposes them to participants; nonmembers receive no match balances. Payments check every pool before deducting; later failures roll back all changes. Existing versions without resource configuration continue using the original single counter. Turn income is added at the start of each player's subsequent turn, matching the original setup behavior.
 
-A model runner can expose these generated reducer methods as its function tools. It should authenticate as the requesting player, serialize calls using current revisions, read validation feedback, and publish only when the user intends publication. The reducer API is provider-independent; no model credentials, LLM service, Fetch registration, or agent hosting are implemented here. Game rules are structured data, never generated JavaScript or free-text adjudication.
+The Grok runner in `../agent` creates an isolated draft through bounded local function tools and shares these publication validators. React loads the generated draft for review, then uses the existing player-authenticated reducers to save or publish it. The runner does not receive player credentials or publish directly. Model credentials stay in the Node service, outside this database module. Game rules are structured data, never generated JavaScript or free-text adjudication.
 
 ## Supported rule vocabulary
 

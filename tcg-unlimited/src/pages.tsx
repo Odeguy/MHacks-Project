@@ -26,6 +26,7 @@ import { usePreview } from "./PreviewContext";
 import { useGameData } from "./GameDataContext";
 import LiveRoom from "./components/LiveRoom";
 import GameCreationEditor from "./components/GameCreationEditor";
+import DeckGenerator from "./components/DeckGenerator";
 import { EmptyState, Eyebrow, Icon } from "./ui";
 
 function PageHeading({
@@ -62,9 +63,11 @@ function Breadcrumb({ children }: { children: ReactNode }) {
 export function GameCard({
   game,
   index,
+  selection,
 }: {
   game: PreviewGame;
   index: number;
+  selection?: { checked: boolean; disabled: boolean; toggle: () => void };
 }) {
   const { favorites, toggleFavorite } = usePreview();
   const saved = favorites.includes(game.id);
@@ -75,6 +78,8 @@ export function GameCard({
       transition={{ duration: 0.22 }}
     >
       <div className="game-card-top">
+        {selection && <input className="library-checkbox" type="checkbox" aria-label={`Select ${game.title}`}
+          checked={selection.checked} disabled={selection.disabled} onChange={selection.toggle} />}
         <span>VOL. {String(index + 1).padStart(2, "0")}</span>
         <button
           className={`icon-button ${saved ? "is-saved" : ""}`}
@@ -128,7 +133,10 @@ export function GameCard({
   );
 }
 export function GameGalleryPage() {
-  const { games, ready, pending, addStarterGames } = useGameData();
+  const { games, ready, pending, addStarterGames, ownedGameIds, deleteGames } = useGameData();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const selectedIds = selected.filter(id => games.some(game => game.id === id) && ownedGameIds.includes(id));
   const [filter, setFilter] = useState("All games");
   const [query, setQuery] = useState("");
   const [view, setView] = useState("grid");
@@ -213,10 +221,20 @@ export function GameGalleryPage() {
             </button>
           </div>
         </div>
+        {(games.length > 0 || selecting) && (
+          <SelectionActions selecting={selecting} count={selectedIds.length} disabled={!ready || pending}
+            onToggle={() => { setSelecting(!selecting); setSelected([]); }}
+            onSelectAll={() => setSelected(displayed.filter(game => ownedGameIds.includes(game.id)).map(game => game.id))}
+            onDelete={async () => { if (await deleteGames(selectedIds)) { setSelected([]); setSelecting(false); } }} />
+        )}
+        {selecting && <p className="quiet-note">Select games you own to delete.</p>}
         {displayed.length ? (
           <div className={`game-grid ${view === "list" ? "game-list" : ""}`}>
             {displayed.map((g) => (
-              <GameCard key={g.id} game={g} index={games.indexOf(g)} />
+              <GameCard key={g.id} game={g} index={games.indexOf(g)} selection={selecting ? {
+                checked: selectedIds.includes(g.id), disabled: pending || !ownedGameIds.includes(g.id),
+                toggle: () => setSelected(ids => ids.includes(g.id) ? ids.filter(id => id !== g.id) : [...ids, g.id]),
+              } : undefined} />
             ))}
           </div>
         ) : (
@@ -236,6 +254,23 @@ export function GameGalleryPage() {
       </section>
     </>
   );
+}
+
+function SelectionActions({ selecting, count, disabled, onToggle, onSelectAll, onDelete }: {
+  selecting: boolean; count: number; disabled: boolean;
+  onToggle: () => void; onSelectAll: () => void; onDelete: () => Promise<void>;
+}) {
+  return <div className="library-actions">
+    <button className="button button-outline" disabled={disabled} onClick={onToggle}>
+      {selecting ? "Cancel selection" : "Select to delete"}
+    </button>
+    {selecting && <>
+      <button className="button button-outline" disabled={disabled} onClick={onSelectAll}>Select all</button>
+      <button className="button button-outline" disabled={disabled || !count} onClick={() => void onDelete()}>
+        Delete selected ({count})
+      </button>
+    </>}
+  </div>;
 }
 
 export function GameDetailsPage() {
@@ -552,7 +587,11 @@ function NewDeckDialog({
 }
 export function SavedDecksPage() {
   const { gameId } = useParams();
-  const { decks, games, gameById, saveDeck, ready, pending } = useGameData();
+  const { decks, games, gameById, saveDeck, ready, pending, deleteDecks } = useGameData();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const selectedIds = selected.filter(id => decks.some(deck => deck.id === id));
+  const [generator, setGenerator] = useState(false);
   const [modal, setModal] = useState(false);
   const [query, setQuery] = useState("");
   const [gameFilter, setGameFilter] = useState(gameId ?? "all");
@@ -578,13 +617,19 @@ export function SavedDecksPage() {
         title="Decks"
         copy=""
         action={
-          <button
-            className="button button-light"
-            onClick={() => setModal(true)}
-          >
-            <Icon name="plus" />
-            New deck
-          </button>
+          <div className="library-actions">
+            <button className="button button-outline" disabled={!ready || pending || !games.length}
+              onClick={() => setGenerator(true)}>
+              Generate deck
+            </button>
+            <button
+              className="button button-light"
+              onClick={() => setModal(true)}
+            >
+              <Icon name="plus" />
+              New deck
+            </button>
+          </div>
         }
       />
       <div className="collection-filters">
@@ -615,6 +660,10 @@ export function SavedDecksPage() {
           {filtered.length} DECKS IN YOUR COLLECTION
         </span>
       </div>
+      <SelectionActions selecting={selecting} count={selectedIds.length} disabled={!ready || pending || !decks.length}
+        onToggle={() => { setSelecting(!selecting); setSelected([]); }}
+        onSelectAll={() => setSelected(filtered.map(deck => deck.id))}
+        onDelete={async () => { if (await deleteDecks(selectedIds)) { setSelected([]); setSelecting(false); } }} />
       <div className="decks-grid">
         {filtered.map((deck, i) => {
           const game = gameById(deck.gameId)!;
@@ -622,6 +671,9 @@ export function SavedDecksPage() {
           return (
             <article className="deck-tile" key={deck.id}>
               <div className="deck-tile-top">
+                {selecting && <input className="library-checkbox" type="checkbox" aria-label={`Select ${deck.name}`}
+                  checked={selectedIds.includes(deck.id)} disabled={pending} onChange={() =>
+                    setSelected(ids => ids.includes(deck.id) ? ids.filter(id => id !== deck.id) : [...ids, deck.id])} />}
                 <span className="micro">
                   DECK / {String(i + 1).padStart(2, "0")}
                 </span>
@@ -693,8 +745,29 @@ export function SavedDecksPage() {
           onClose={() => setModal(false)}
         />
       )}
+      {generator && <GenerateDeckDialog gameId={gameFilter === "all" ? undefined : gameFilter}
+        onClose={() => setGenerator(false)} />}
     </>
   );
+}
+
+function GenerateDeckDialog({ gameId, onClose }: { gameId?: string; onClose: () => void }) {
+  const { games } = useGameData();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [selected, setSelected] = useState(gameId ?? games[0]?.id ?? "");
+  useEffect(() => { const element = dialog.current; element?.showModal(); return () => element?.close(); }, []);
+  return <dialog className="studio-dialog" ref={dialog} aria-labelledby="generate-deck-title" onCancel={onClose}
+    onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog-top"><h2 id="generate-deck-title">Generate deck</h2>
+      <button className="icon-button" aria-label="Close dialog" onClick={onClose}><Icon name="close" /></button>
+    </div>
+    <label className="form-label">Game
+      <select value={selected} onChange={event => setSelected(event.target.value)}>
+        {games.map(game => <option key={game.id} value={game.id}>{game.title}</option>)}
+      </select>
+    </label>
+    <DeckGenerator gameId={selected} />
+  </dialog>;
 }
 
 export function DeckBuilderPage() {

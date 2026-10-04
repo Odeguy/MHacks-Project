@@ -9,6 +9,7 @@ import { displayCard, useGameData } from "../GameDataContext";
 import { usePreview } from "../PreviewContext";
 import { CardFan, PlayingCard } from "../pages";
 import { Icon } from "../ui";
+import DeckGenerator from "./DeckGenerator";
 import type { VisibleCardProjection } from "../module_bindings/types";
 import { legacyResourceRules, resourceCosts } from "../../spacetimedb/src/resources";
 
@@ -334,6 +335,15 @@ export default function LiveRoom() {
             <Link className="text-button" to={`/games/${gameId}/decks`}>
               Build a deck
             </Link>
+            <details className="lobby-deck-generator">
+              <summary>Generate a deck</summary>
+              <DeckGenerator gameId={gameId} versionId={room.versionId} onSaved={async id => {
+                const selected = await data.call(connection => connection.reducers.selectDeck({
+                  roomId: room.id, deckId: BigInt(id.slice(5)),
+                }));
+                if (!selected) notify("Deck saved. Choose it from Your deck to select it.");
+              }} />
+            </details>
             <button
               className="button button-light full-width"
               disabled={!chosenDeck?.complete || data.pending}

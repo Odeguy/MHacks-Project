@@ -371,6 +371,8 @@ export const publishGame = db.reducer(
           ? undefined
           : ctx.db.publishedGame.id.find(a.gameId);
       if (a.gameId !== undefined)
+        requireRule(!ctx.db.deletedGame.gameId.find(a.gameId), "This game was deleted; publish as a new game");
+      if (a.gameId !== undefined)
         requireRule(
           game?.owner.equals(ctx.sender),
           "Game not found or not owned by you",

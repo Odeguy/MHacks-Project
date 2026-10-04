@@ -82,6 +82,7 @@ function useDatabaseState() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(0);
   const [published] = useTable(tables.publishedGame);
+  const [deletedGames] = useTable(tables.deletedGame);
   const [versions] = useTable(tables.gameVersion);
   const [saved] = useTable(tables.myDecks);
   const [drafts] = useTable(tables.myDrafts);
@@ -127,6 +128,7 @@ function useDatabaseState() {
       .onError((ctx) => setError(ctx.event?.message ?? "Subscription failed"))
       .subscribe([
         tables.publishedGame,
+        tables.deletedGame,
         tables.gameVersion,
         tables.myDecks,
         tables.myDrafts,
@@ -152,7 +154,7 @@ function useDatabaseState() {
     };
   }, [isActive, conn]);
 
-  const games: PreviewGame[] = ready
+  const allGames: PreviewGame[] = ready
     ? published.flatMap((row) => {
         const version = versions.find(
           (item) => item.id === row.latestVersionId,
@@ -186,6 +188,8 @@ function useDatabaseState() {
         ];
       })
     : demoGames;
+  const games = allGames.filter(game => !deletedGames.some(row => `game-${row.gameId}` === game.id));
+  const ownedGameIds = published.filter(row => identity && row.owner.equals(identity)).map(row => `game-${row.id}`);
   const cards: PreviewCard[] = ready
     ? versions.flatMap((version) =>
         version.definition.cards.map((card) =>
@@ -217,7 +221,7 @@ function useDatabaseState() {
       })
     : preview.decks;
   const gameById = (id: string | undefined) =>
-    games.find((game) => game.id === id);
+    allGames.find((game) => game.id === id);
   const versionForGame = (id: string) => {
     const game = gameById(id);
     return versions.find((version) => version.id === game?.versionId);
@@ -568,6 +572,30 @@ function useDatabaseState() {
       return true;
     });
   }
+  async function deleteGames(ids: string[]) {
+    return run(async () => {
+      const connection = requireConnection();
+      const gameIds = ids.map(id => BigInt(id.slice(5)));
+      await connection.reducers.deleteGames({ gameIds });
+      await waitFor(() => gameIds.every(id => connection.db.deletedGame.gameId.find(id)) ? true : undefined);
+      preview.notify(`${ids.length} game${ids.length === 1 ? "" : "s"} deleted.`);
+      return true;
+    });
+  }
+  async function deleteDecks(ids: string[]) {
+    return run(async () => {
+      const connection = requireConnection();
+      const selected = ids.map(id => {
+        const deck = saved.find(row => `deck-${row.id}` === id);
+        if (!deck) throw new Error("Deck no longer exists. Refresh your selection.");
+        return { deckId: deck.id, expectedRevision: deck.revision };
+      });
+      await connection.reducers.deleteDecks({ decks: selected });
+      await waitFor(() => selected.every(row => !connection.db.myDecks.id.find(row.deckId)) ? true : undefined);
+      preview.notify(`${ids.length} deck${ids.length === 1 ? "" : "s"} deleted.`);
+      return true;
+    });
+  }
   async function takeAction(
     matchId: bigint,
     expectedRevision: number,
@@ -584,6 +612,7 @@ function useDatabaseState() {
     error: error || connectionError?.message || "",
     pending: pending > 0,
     games,
+    ownedGameIds,
     cards,
     decks,
     drafts,
@@ -607,6 +636,8 @@ function useDatabaseState() {
     gameById,
     cardsForGame,
     saveDeck,
+    deleteGames,
+    deleteDecks,
     saveDesign,
     saveDesignerDocument,
     publishDesignerDocument,

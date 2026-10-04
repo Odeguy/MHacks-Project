@@ -97,6 +97,12 @@ export const Connection = __t.object("Connection", {
 });
 export type Connection = __Infer<typeof Connection>;
 
+export const DeckDeletion = __t.object("DeckDeletion", {
+  deckId: __t.u64(),
+  expectedRevision: __t.u32(),
+});
+export type DeckDeletion = __Infer<typeof DeckDeletion>;
+
 export const DeckEntry = __t.object("DeckEntry", {
   cardId: __t.string(),
   quantity: __t.u16(),
@@ -122,6 +128,12 @@ export const DeckRules = __t.object("DeckRules", {
   allowedFormatIds: __t.array(__t.string()),
 });
 export type DeckRules = __Infer<typeof DeckRules>;
+
+export const DeletedGame = __t.object("DeletedGame", {
+  gameId: __t.u64(),
+  deletedAt: __t.timestamp(),
+});
+export type DeletedGame = __Infer<typeof DeletedGame>;
 
 export const DesignerRules = __t.object("DesignerRules", {
   healthName: __t.string(),

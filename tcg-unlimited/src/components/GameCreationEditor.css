@@ -10,6 +10,38 @@
 .creation-workspace h2 {
   margin-bottom: 16px;
 }
+.creation-agent {
+  border: 2px solid #fff9;
+  padding: 16px;
+  margin: 20px 0;
+}
+.creation-agent summary {
+  cursor: pointer;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+.creation-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.creation-agent p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.creation-agent-result {
+  border-top: 1px solid #fff6;
+  margin-top: 16px;
+}
+.creation-agent-result small {
+  display: block;
+  margin-top: 12px;
+}
+.creation-agent-error {
+  color: #ffb9b9;
+  overflow-wrap: anywhere;
+}
 .creation-tabs {
   flex-wrap: wrap;
   margin: 20px 0;

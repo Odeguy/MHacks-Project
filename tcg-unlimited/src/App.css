@@ -3581,6 +3581,41 @@ h1,
     .live-table .table-field { padding: 10px 24px; gap: 8px; }
 }
 
+.library-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.library-checkbox {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    accent-color: #a3c4f3;
+}
+.deck-generator {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+.deck-generator .library-actions {
+    margin-bottom: 0;
+}
+.deck-generator p {
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.lobby-deck-generator {
+    border: 2px solid currentColor;
+    padding: 12px;
+    margin: 16px 0;
+}
+.lobby-deck-generator summary {
+    cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
     html {
         scroll-behavior: auto;

@@ -27,6 +27,7 @@ import {
 import "./GameCreationEditor.css";
 import SpecialCardEditor from "./SpecialCardEditor";
 import NumberField from "./NumberField";
+import AgentDesigner from "./AgentDesigner";
 import ResourceEditor, { CardResourceCosts } from "./ResourceEditor";
 import { legacyResourceRules } from "../../spacetimedb/src/resources";
 export default function GameCreationEditor() {
@@ -231,6 +232,20 @@ export default function GameCreationEditor() {
               New game
             </button>
           </div>
+          <AgentDesigner
+            disabled={data.pending}
+            onApply={(generated) => {
+              const next = syncDocument(generated);
+              setDoc(next);
+              setDraftId(undefined);
+              setRevision(undefined);
+              loadedQuery.current = "";
+              setParams({}, { replace: true });
+              setSelectedCard(next.definition.cards[0]?.id ?? "");
+              setPaintType(next.rules.slotTypes[0]?.id ?? "");
+              setTab("General");
+            }}
+          />
           <div className="filter-tabs creation-tabs">
             {["General", "Card types", "Cards", "Phases", "Field"].map((t) => (
               <button

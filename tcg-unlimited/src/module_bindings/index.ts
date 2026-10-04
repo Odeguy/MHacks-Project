@@ -58,6 +58,8 @@ import CreateSubPhasesReducer from "./create_sub_phases_reducer";
 import CreateTurnPhasesReducer from "./create_turn_phases_reducer";
 import CreateWinConditionReducer from "./create_win_condition_reducer";
 import DeleteDeckReducer from "./delete_deck_reducer";
+import DeleteDecksReducer from "./delete_decks_reducer";
+import DeleteGamesReducer from "./delete_games_reducer";
 import JoinRoomReducer from "./join_room_reducer";
 import LeaveRoomReducer from "./leave_room_reducer";
 import PassReactionReducer from "./pass_reaction_reducer";
@@ -78,6 +80,7 @@ import ValidateGameDraftReducer from "./validate_game_draft_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import DeletedGameRow from "./deleted_game_table";
 import GameVersionRow from "./game_version_table";
 import MatchHistoryRow from "./match_history_table";
 import MatchPlayersRow from "./match_players_table";
@@ -103,6 +106,17 @@ import VisibleMatchCardsRow from "./visible_match_cards_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  deletedGame: __table({
+    name: 'deleted_game',
+    indexes: [
+      { accessor: 'gameId', name: 'deleted_game_game_id_idx_btree', algorithm: 'btree', columns: [
+        'gameId',
+      ] },
+    ],
+    constraints: [
+      { name: 'deleted_game_game_id_key', constraint: 'unique', columns: ['gameId'] },
+    ],
+  }, DeletedGameRow),
   gameVersion: __table({
     name: 'game_version',
     indexes: [
@@ -305,6 +319,8 @@ const reducersSchema = __reducers(
   __reducerSchema("create_turn_phases", CreateTurnPhasesReducer),
   __reducerSchema("create_win_condition", CreateWinConditionReducer),
   __reducerSchema("delete_deck", DeleteDeckReducer),
+  __reducerSchema("delete_decks", DeleteDecksReducer),
+  __reducerSchema("delete_games", DeleteGamesReducer),
   __reducerSchema("join_room", JoinRoomReducer),
   __reducerSchema("leave_room", LeaveRoomReducer),
   __reducerSchema("pass_reaction", PassReactionReducer),

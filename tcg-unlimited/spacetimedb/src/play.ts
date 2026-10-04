@@ -80,25 +80,42 @@ export const saveDeck = db.reducer(
       }
     }),
 );
+function removeDeck(ctx: Ctx, a: { deckId: bigint; expectedRevision: number }) {
+  const deck = ownedDeck(ctx, a.deckId);
+  requireRule(
+    deck.revision === a.expectedRevision,
+    "Deck changed; refresh before retrying",
+  );
+  for (const m of ctx.db.roomMember.owner.filter(ctx.sender)) {
+    if (m.deckId === deck.id && getRoom(ctx, m.roomId).status === "lobby")
+      ctx.db.roomMember.id.update({
+        ...m,
+        deckId: undefined,
+        deckRevision: undefined,
+        ready: false,
+      });
+  }
+  ctx.db.savedDeck.id.delete(deck.id);
+}
 export const deleteDeck = db.reducer(
   { deckId: t.u64(), expectedRevision: t.u32() },
+  (ctx, a) => run(() => removeDeck(ctx, a)),
+);
+export const deleteDecks = db.reducer(
+  {
+    decks: t.array(t.object("DeckDeletion", {
+      deckId: t.u64(),
+      expectedRevision: t.u32(),
+    })),
+  },
   (ctx, a) =>
     run(() => {
-      const deck = ownedDeck(ctx, a.deckId);
+      requireRule(a.decks.length > 0 && a.decks.length <= 100, "Select 1–100 decks");
       requireRule(
-        deck.revision === a.expectedRevision,
-        "Deck changed; refresh before retrying",
+        new Set(a.decks.map(d => d.deckId)).size === a.decks.length,
+        "Duplicate deck selection",
       );
-      for (const m of ctx.db.roomMember.owner.filter(ctx.sender)) {
-        if (m.deckId === deck.id && getRoom(ctx, m.roomId).status === "lobby")
-          ctx.db.roomMember.id.update({
-            ...m,
-            deckId: undefined,
-            deckRevision: undefined,
-            ready: false,
-          });
-      }
-      ctx.db.savedDeck.id.delete(deck.id);
+      for (const deck of a.decks) removeDeck(ctx, deck);
     }),
 );
 export const createRoom = db.reducer(
@@ -107,7 +124,8 @@ export const createRoom = db.reducer(
     run(() => {
       text(a.requestId, "Request ID", 64);
       text(a.name, "Room name");
-      version(ctx, a.versionId);
+      const published = version(ctx, a.versionId);
+      requireRule(!ctx.db.deletedGame.gameId.find(published.gameId), "This game was deleted");
       const rooms = [...ctx.db.room.host.filter(ctx.sender)];
       if (rooms.some((r) => r.requestId === a.requestId)) return;
       leaveOtherLobbies(ctx, ctx.sender);
