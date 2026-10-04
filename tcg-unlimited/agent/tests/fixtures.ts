@@ -274,8 +274,37 @@ export function fixtureDocument() {
 }
 
 export function mockGrok(calls = designCalls()): typeof fetch {
-  return (async () =>
-    new Response(JSON.stringify({ status: "completed", output: calls }), {
+  return (async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    const allowed = new Set(
+      body.tools.map((tool: { name: string }) => tool.name),
+    );
+    const completed = new Set(
+      body.input
+        .filter(
+          (item: ResponseItem) =>
+            item.type === "function_call_output" &&
+            JSON.parse(item.output as string).ok !== false,
+        )
+        .map((item: ResponseItem) => item.call_id),
+    );
+    const pending = calls.filter(
+      (item) => allowed.has(item.name) && !completed.has(item.call_id),
+    );
+    const limit = Number(
+      body.instructions.match(/Use at most (\d+) tool calls/)?.[1] ?? 6,
+    );
+    const output = pending.slice(0, limit);
+    if (
+      calls.length &&
+      pending.length < limit &&
+      allowed.has("complete_generation_stage")
+    )
+      output.push(
+        call("complete_generation_stage", {}, body.input.length + 1000),
+      );
+    return new Response(JSON.stringify({ status: "completed", output }), {
       headers: { "Content-Type": "application/json" },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 }

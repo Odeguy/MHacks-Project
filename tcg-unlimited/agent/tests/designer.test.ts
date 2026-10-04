@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { designGame } from "../designer";
-import { requestGrok } from "../grok";
+import { requestGrok, type ResponseItem } from "../grok";
 import { blankDocument, executeTool, validateDocument, tools } from "../tools";
 import {
   call,
@@ -10,6 +10,13 @@ import {
   effect,
   action,
 } from "./fixtures";
+
+beforeEach(() => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("Grok game creation", () => {
   it("builds a valid game through all core tools, keeping phase limits and hand space", async () => {
@@ -36,18 +43,23 @@ describe("Grok game creation", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
     expect(body.parallel_tool_calls).toBe(true);
     expect(body.store).toBe(false);
-    expect(body.tools).toHaveLength(tools.length);
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body.tools.length).toBeLessThan(tools.length);
+    expect(
+      body.tools.some((tool: { name: string }) => tool.name === "create_cards"),
+    ).toBe(false);
   });
 
   it("returns validation failures to Grok for repair before accepting a draft", async () => {
     const bodies: Record<string, unknown>[] = [];
     let round = 0;
+    const valid = mockGrok();
     const fake = (async (_url, init) => {
       bodies.push(JSON.parse(init!.body as string));
+      if (round++) return valid(_url, init);
       return new Response(
         JSON.stringify({
-          output:
-            round++ === 0 ? [call("finish_game", {}, 100)] : designCalls(),
+          output: [call("complete_generation_stage", {}, 100)],
         }),
       );
     }) as typeof fetch;
@@ -70,15 +82,25 @@ describe("Grok game creation", () => {
   it("supports models that emit one sequential tool call per response", async () => {
     const calls = designCalls();
     let index = 0;
+    let previous: ResponseItem | undefined;
     const fake = (async (_url, init) => {
       const body = JSON.parse(init!.body as string);
       if (index) {
         const last = body.input.at(-1);
         expect(last.type).toBe("function_call_output");
-        expect(last.call_id).toBe(calls[index - 1].call_id);
+        expect(last.call_id).toBe(previous!.call_id);
         expect(JSON.parse(last.output).ok).not.toBe(false);
       }
-      return new Response(JSON.stringify({ output: [calls[index++]] }));
+      const allowed = new Set(
+        body.tools.map((tool: { name: string }) => tool.name),
+      );
+      const next = calls.findIndex((tool) => allowed.has(tool.name));
+      previous =
+        next >= 0
+          ? calls.splice(next, 1)[0]
+          : call("complete_generation_stage", {}, 1000 + index);
+      index++;
+      return new Response(JSON.stringify({ output: [previous] }));
     }) as typeof fetch;
     expect(
       (
@@ -89,7 +111,7 @@ describe("Grok game creation", () => {
         })
       ).document.name,
     ).toBe("Pocket duel");
-    expect(index).toBe(calls.length);
+    expect(index).toBe(designCalls().length + 3);
   });
 
   it("reports invalid arguments and unknown tools without changing the draft", () => {
@@ -197,22 +219,22 @@ describe("Grok game creation", () => {
 
   it("repairs malformed tool JSON using model feedback", async () => {
     let round = 0;
-    const fake = (async () =>
-      new Response(
-        JSON.stringify({
-          output:
-            round++ === 0
-              ? [
-                  {
-                    type: "function_call",
-                    name: "create_cards",
-                    call_id: "broken",
-                    arguments: "{",
-                  },
-                ]
-              : designCalls(),
-        }),
-      )) as typeof fetch;
+    const valid = mockGrok();
+    const fake = (async (...args) =>
+      round++
+        ? valid(...args)
+        : new Response(
+            JSON.stringify({
+              output: [
+                {
+                  type: "function_call",
+                  name: "set_game_details",
+                  call_id: "broken",
+                  arguments: "{",
+                },
+              ],
+            }),
+          )) as typeof fetch;
     expect(
       (
         await designGame("Duel", {

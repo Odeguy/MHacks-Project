@@ -14,9 +14,24 @@ SpacetimeDB connection. In a lobby it uses the room's exact game version and sel
 the saved deck without navigating. Deck generation never modifies the game or its cards.
 
 Requests naming familiar games produce compact adaptations using supported mechanics,
-with simplified/omitted rules described in the draft. Related tool calls can be batched
-to reduce round trips. The existing 60-second model request and six-minute total limits
-remain in place; complex prompts can still time out.
+with simplified/omitted rules described in the draft. Generation uses low reasoning
+effort and server-controlled setup, mechanics, cards, and finish stages. Each stage
+exposes the relevant tools and requires a tool call; validation failures enable the full tool catalog for repairs.
+Responses are limited to six tool calls (three in mechanics and repair rounds) and three card definitions total. The initial
+generated pool is capped at eight distinct cards; expand it afterward in the editor.
+The existing 60-second model request and six-minute total limits remain in place;
+complex prompts can still time out.
+
+If Grok reaches its output-token limit, game generation preserves completed calls and
+reasoning and requests a smaller continuation. Truncated calls are not executed or
+replayed, and interrupted responses cannot advance a stage or finish a game. Three
+consecutive interrupted rounds without progress stop the attempt. Other upstream
+failures remain errors. The 60-second per-request timeout is unchanged.
+
+Server logs prefixed `[game-generation]` record a random generation ID, stage, round,
+model duration, total elapsed duration, call/rejection counts, validation repair count,
+and card count. They exclude prompts, card text, API keys, and raw upstream responses.
+Use them to compare request latency and repair rates across identical prompts.
 
 ## Run locally
 
@@ -91,6 +106,7 @@ Cancellation closes the request and aborts the in-flight model call.
 - `tools.ts`: draft creation tools and shared publication validation.
 - `grok.ts`: server-only Responses API client.
 - `designer.ts`: instructions and bounded tool loop.
+- `generation-stages.ts`: stage tools, completion checks and generation budgets.
 - `server.ts`: HTTP endpoint and request handling.
 - `run.mjs`: build/launch; no agent framework or API SDK required.
 - `src/components/AgentDesigner.tsx`: prompt, cancel, preview and apply UI.

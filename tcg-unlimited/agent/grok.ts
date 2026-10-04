@@ -6,7 +6,11 @@ export type ResponseItem = {
   content?: { type: string; text?: string }[];
   [key: string]: unknown;
 };
-export type GrokResponse = { output: ResponseItem[]; status?: string };
+export type GrokResponse = {
+  output: ResponseItem[];
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
+};
 export type GrokOptions = {
   apiKey: string;
   model: string;
@@ -26,6 +30,7 @@ export async function requestGrok(
   options: GrokOptions,
   body: Record<string, unknown>,
   signal?: AbortSignal,
+  recovery: { allowIncomplete?: boolean } = {},
 ): Promise<GrokResponse> {
   if (!options.apiKey || options.apiKey === "your_api_key_here") {
     throw new AgentError(
@@ -64,7 +69,12 @@ export async function requestGrok(
   const result = (await response.json()) as GrokResponse;
   if (!Array.isArray(result.output))
     throw new AgentError("Grok returned an unexpected response.");
-  if (result.status === "failed" || result.status === "incomplete")
+  if (
+    result.status === "failed" ||
+    (result.status === "incomplete" &&
+      (!recovery.allowIncomplete ||
+        result.incomplete_details?.reason !== "max_output_tokens"))
+  )
     throw new AgentError(
       "Grok could not complete this request. Try a smaller game specification.",
     );
