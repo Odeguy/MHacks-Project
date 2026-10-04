@@ -159,6 +159,11 @@
   font-size: 9px;
   margin-top: 8px;
 }
+.creation-resource-pool {
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid currentColor;
+}
 .day-mode .creation-slots button {
   background: #fff;
   color: #303030;

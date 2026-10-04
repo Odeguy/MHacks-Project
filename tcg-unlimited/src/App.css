@@ -272,8 +272,26 @@ textarea::placeholder {
     gap: 22px;
     white-space: nowrap;
 }
-.app-nav-toggle > svg {
+.app-nav-toggle > svg,
+.app-nav-toggle > img {
     flex-shrink: 0;
+}
+.reaction-panel,
+.field-rule-panel {
+    padding: 20px;
+    margin-bottom: 16px;
+}
+.reaction-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.reaction-panel p,
+.field-rule-panel div {
+    margin-top: 8px;
+    font-size: 13px;
 }
 .app-nav-toggle .nav-label {
     font: 10px var(--mono);
@@ -1409,6 +1427,16 @@ p {
     text-transform: uppercase;
     padding: 0;
 }
+.card-resource-costs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 65%;
+    gap: 1cqw;
+}
+.card-frame .playing-card:has(.card-resource-costs) {
+    grid-template-rows: minmax(11%, auto) 20% minmax(0, 1fr) 12%;
+}
 .card-frame .card-cost {
     width: 10cqw;
     height: 10cqw;
@@ -1417,6 +1445,17 @@ p {
     display: grid;
     place-content: center;
     font-size: 5cqw;
+}
+.card-frame .card-resource-costs .card-cost {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    padding: 1cqw;
+    font-size: 3.4cqw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .card-frame .playing-card > h3 {
     font: 7.6cqw var(--display);

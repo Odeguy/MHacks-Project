@@ -3,16 +3,21 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { useSpacetimeDB, useTable } from "spacetimedb/react";
+import { useLocation } from "react-router-dom";
 import { DbConnection, tables } from "./module_bindings";
 import type {
   ActionInput,
   GameDefinition,
   DesignerRules,
+  SpecialRules,
 } from "./module_bindings/types";
 import type { DesignerDocument } from "./designer-model";
+import type { ResourceRules } from "../spacetimedb/src/contracts";
+import { resourceCosts } from "../spacetimedb/src/resources";
 import {
   games as demoGames,
   cards as demoCards,
@@ -38,11 +43,13 @@ export function displayCard(
   version: bigint,
   definition: GameDefinition,
   id: string,
+  resources?: ResourceRules,
 ): PreviewCard {
   const card = definition.cards.find((item) => item.id === id)!;
   const format = definition.formats.find((item) => item.id === card.formatId)!;
   const value = (key: string) =>
     card.values.find((item) => item.key === key)?.numberValue ?? 0;
+  const play = definition.actions.find(item => item.kind === "play" && [...card.actionIds, ...format.buttons].includes(item.id));
   return {
     id: cardKey(version, id),
     name: card.name,
@@ -56,6 +63,7 @@ export function displayCard(
     cost:
       definition.actions.find((item) => item.kind === "play")?.resourceCost ??
       0,
+    resourceCosts: resources ? (play ? resourceCosts(play, id, resources) : []).map(c => ({ name: resources.pools.find(p => p.id === c.poolId)!.name, amount: c.amount })) : undefined,
     variant: "orbit",
     stats: format.fields
       .filter((field) => field.kind === "number")
@@ -64,6 +72,8 @@ export function displayCard(
 }
 
 function useDatabaseState() {
+  const { pathname } = useLocation();
+  const previousRoom = useRef<bigint>();
   const { isActive, identity, getConnection, connectionError } =
     useSpacetimeDB();
   const conn = getConnection() as DbConnection | null;
@@ -77,6 +87,12 @@ function useDatabaseState() {
   const [drafts] = useTable(tables.myDrafts);
   const [draftRuleRows] = useTable(tables.myDraftRules);
   const [versionRuleRows] = useTable(tables.versionRules);
+  const [draftSpecialRows] = useTable(tables.myDraftSpecialRules);
+  const [versionSpecialRows] = useTable(tables.versionSpecialRules);
+  const [draftResourceRows] = useTable(tables.myDraftResourceRules);
+  const [versionResourceRows] = useTable(tables.versionResourceRules);
+  const [resourceBalances] = useTable(tables.myMatchResourceBalances);
+  const [reactionWindows] = useTable(tables.myReactionWindows);
   const [rooms] = useTable(tables.room);
   const [memberships] = useTable(tables.myMemberships);
   const [participants] = useTable(tables.roomParticipants);
@@ -85,6 +101,21 @@ function useDatabaseState() {
   const [visibleCards] = useTable(tables.visibleMatchCards);
   const [history] = useTable(tables.matchHistory);
   const [users] = useTable(tables.user);
+
+  useEffect(() => {
+    const id = /^\/rooms\/room-(\d+)$/.exec(pathname)?.[1];
+    const next = id ? BigInt(id) : undefined;
+    if (previousRoom.current === next) return;
+    const leaving = previousRoom.current;
+    previousRoom.current = next;
+    if (
+      leaving !== undefined && ready && conn &&
+      rooms.some((room) => room.id === leaving && room.status === "lobby") &&
+      memberships.some((member) => member.roomId === leaving)
+    ) {
+      void call((connection) => connection.reducers.leaveRoom({ roomId: leaving }));
+    }
+  }, [pathname, ready, conn, rooms, memberships]);
 
   useEffect(() => {
     setReady(false);
@@ -101,6 +132,12 @@ function useDatabaseState() {
         tables.myDrafts,
         tables.myDraftRules,
         tables.versionRules,
+        tables.myDraftSpecialRules,
+        tables.versionSpecialRules,
+        tables.myDraftResourceRules,
+        tables.versionResourceRules,
+        tables.myMatchResourceBalances,
+        tables.myReactionWindows,
         tables.room,
         tables.myMemberships,
         tables.roomParticipants,
@@ -152,7 +189,7 @@ function useDatabaseState() {
   const cards: PreviewCard[] = ready
     ? versions.flatMap((version) =>
         version.definition.cards.map((card) =>
-          displayCard(version.id, version.definition, card.id),
+          displayCard(version.id, version.definition, card.id, versionResourceRows.find(row => row.versionId === version.id)?.rules),
         ),
       )
     : demoCards;
@@ -190,7 +227,7 @@ function useDatabaseState() {
       versions.find((item) => item.id === versionId) ?? versionForGame(id);
     return ready
       ? (version?.definition.cards.map((card) =>
-          displayCard(version.id, version.definition, card.id),
+          displayCard(version.id, version.definition, card.id, versionResourceRows.find(row => row.versionId === version.id)?.rules),
         ) ?? [])
       : demoCards;
   };
@@ -279,6 +316,8 @@ function useDatabaseState() {
     draftId?: bigint,
     expectedRevision?: number,
     rules?: DesignerRules,
+    special?: SpecialRules,
+    resources?: ResourceRules,
   ) {
     const connection = requireConnection();
     if (draftId === undefined) {
@@ -302,7 +341,15 @@ function useDatabaseState() {
       description,
       definition,
     };
-    if (rules)
+    if (rules && special && resources)
+      await connection.reducers.updateResourceDesignerDraft({ ...update, rules, special, resources });
+    else if (rules && special)
+      await connection.reducers.updateSpecialDesignerDraft({
+        ...update,
+        rules,
+        special,
+      });
+    else if (rules)
       await connection.reducers.updateDesignerDraft({ ...update, rules });
     else await connection.reducers.updateGameDraft(update);
     return waitFor(() =>
@@ -343,6 +390,8 @@ function useDatabaseState() {
         draftId,
         revision,
         document.rules,
+        document.special,
+        document.resources,
       );
       preview.notify("Draft saved.");
       return draft;
@@ -356,6 +405,8 @@ function useDatabaseState() {
     draftId?: bigint,
     expectedRevision?: number,
     rules?: DesignerRules,
+    special?: SpecialRules,
+    resources?: ResourceRules,
   ) {
     const connection = requireConnection();
     const updated = await writeDefinition(
@@ -366,6 +417,8 @@ function useDatabaseState() {
       draftId,
       expectedRevision,
       rules,
+      special,
+      resources,
     );
     await connection.reducers.validateGameDraft({
       draftId: updated.id,
@@ -428,6 +481,8 @@ function useDatabaseState() {
         draftId,
         revision,
         document.rules,
+        document.special,
+        document.resources,
       );
       preview.notify("Game published.");
       return `game-${version.gameId}`;
@@ -534,6 +589,12 @@ function useDatabaseState() {
     drafts,
     draftRuleRows,
     versionRuleRows,
+    draftSpecialRows,
+    versionSpecialRows,
+    draftResourceRows,
+    versionResourceRows,
+    resourceBalances,
+    reactionWindows,
     versions,
     rooms,
     memberships,

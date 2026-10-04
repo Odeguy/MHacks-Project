@@ -1,10 +1,16 @@
 import { definitionFromSettings } from "./game-definitions";
+import {
+  cardFormat,
+  normalizeCardFormat,
+} from "../spacetimedb/src/card-formats";
 import type {
   GameDefinition,
   DesignerRules,
   CardEffect,
   GameAction,
 } from "./module_bindings/types";
+import type { SpecialRules, ResourceRules } from "../spacetimedb/src/contracts";
+import { legacyResourceRules } from "../spacetimedb/src/resources";
 
 type Mutable<T> = T extends readonly (infer U)[]
   ? Mutable<U>[]
@@ -16,6 +22,8 @@ export type DesignerDocument = {
   prompt: string;
   definition: Mutable<GameDefinition>;
   rules: Mutable<DesignerRules>;
+  special: Mutable<SpecialRules>;
+  resources: Mutable<ResourceRules>;
 };
 export const actionKinds = [
   "play",
@@ -42,7 +50,9 @@ export function defaultRules(game: GameDefinition): Mutable<DesignerRules> {
     playsPerTurn: 3,
     typeRoles: game.formats.map((format) => ({
       formatId: format.id,
-      role: /effect|relic/i.test(format.name) ? "effect" : "fighter",
+      role: /effect|relic/i.test(format.name)
+        ? "persistent_effect"
+        : "basic_atk_def",
     })),
     slotTypes: [{ id: "general", name: "General" }],
     slots: game.field.slots.map((slot) => ({
@@ -78,13 +88,40 @@ export function documentFromDefinition(
   prompt: string,
   definition: GameDefinition,
   rules?: DesignerRules,
+  special?: SpecialRules,
+  resources?: ResourceRules,
 ): DesignerDocument {
   const doc = structuredClone({
     name,
     prompt,
     definition,
     rules: rules ?? defaultRules(definition),
+    special: special ?? { reactions: [], fields: [] },
+    resources: resources ?? legacyResourceRules(definition),
   }) as DesignerDocument;
+  for (const type of doc.rules.typeRoles) {
+    const format = doc.definition.formats.find((f) => f.id === type.formatId);
+    const actionIds = [
+      ...(format?.buttons ?? []),
+      ...doc.definition.cards
+        .filter((c) => c.formatId === type.formatId)
+        .flatMap((c) => c.actionIds),
+    ];
+    type.role = normalizeCardFormat(
+      type.role,
+      doc.definition.actions.some(
+        (a) => a.kind === "activate" && actionIds.includes(a.id),
+      ),
+    );
+    if (
+      !rules &&
+      type.role === "basic_atk_def" &&
+      doc.definition.actions.some(
+        (a) => a.kind === "activate" && actionIds.includes(a.id),
+      )
+    )
+      type.role = "effect_atk_def";
+  }
   // Give inherited format abilities independent card actions, preserving their effects on resume.
   for (const card of doc.definition.cards) {
     const format = doc.definition.formats.find((f) => f.id === card.formatId)!;
@@ -112,6 +149,15 @@ export function documentFromDefinition(
   return doc;
 }
 export function newDocument(): DesignerDocument {
+  const doc = exampleDocument();
+  doc.definition.cards = [];
+  doc.definition.triggers = [];
+  doc.definition.deckRules.copyLimits = [];
+  doc.rules.cardSlots = [];
+  doc.resources = { enabled: false, pools: [{ id: "resource", name: "Mana", starting: 3, perTurn: 1 }], costs: [], effects: [] };
+  return syncDocument(doc);
+}
+export function exampleDocument(): DesignerDocument {
   const game = definitionFromSettings({
     name: "Untitled game",
     prompt: "",
@@ -141,12 +187,23 @@ export function newDocument(): DesignerDocument {
   rules.cardSlots = game.cards.map((card) => ({
     cardId: card.id,
     allowedTypeIds: [
-      rules.typeRoles.find((role) => role.formatId === card.formatId)!.role,
+      cardFormat(
+        rules.typeRoles.find((type) => type.formatId === card.formatId)!.role,
+      ).combat
+        ? "fighter"
+        : "effect",
     ],
   }));
-  let doc = { name: "Untitled game", prompt: "", definition: game, rules };
+  let doc: DesignerDocument = {
+    name: "Untitled game",
+    prompt: "",
+    definition: game,
+    rules,
+    special: { reactions: [], fields: [] },
+    resources: legacyResourceRules(game),
+  };
   for (const type of rules.typeRoles)
-    doc = changeTypeRole(doc, type.formatId, type.role);
+    doc = changeTypeFormat(doc, type.formatId, type.role);
   doc.rules.phases[0].steps.push({
     id: "main_activate",
     kind: "activate",
@@ -157,6 +214,48 @@ export function newDocument(): DesignerDocument {
 }
 export function syncDocument(document: DesignerDocument): DesignerDocument {
   const doc = structuredClone(document);
+  doc.special ??= { reactions: [], fields: [] };
+  doc.resources ??= legacyResourceRules(doc.definition);
+  const poolIds = new Set(doc.resources.pools.map(p => p.id));
+  doc.resources.costs = doc.resources.costs.filter(c =>
+    doc.definition.actions.some(a => a.id === c.actionId) &&
+    (!c.cardId || doc.definition.cards.some(card => card.id === c.cardId))
+  ).map(c => ({ ...c, amounts: c.amounts.filter(a => poolIds.has(a.poolId)) }));
+  doc.resources.effects = doc.resources.effects.filter(b => {
+    const effect = (b.isTrigger ? doc.definition.triggers : doc.definition.actions).find(a => a.id === b.interactionId)?.effects[b.effectIndex];
+    return poolIds.has(b.poolId) && effect && ["gain_resource", "spend_resource"].includes(effect.kind);
+  });
+  const roleOf = (cardId: string) =>
+    doc.rules.typeRoles.find(
+      (type) =>
+        type.formatId ===
+        doc.definition.cards.find((c) => c.id === cardId)?.formatId,
+    )?.role;
+  doc.special.reactions = doc.special.reactions.filter(
+    (rule) => roleOf(rule.cardId) === "trap_reaction",
+  );
+  doc.special.fields = doc.special.fields.filter(
+    (rule) => roleOf(rule.cardId) === "field_effect",
+  );
+  for (const card of doc.definition.cards) {
+    if (
+      roleOf(card.id) === "trap_reaction" &&
+      !doc.special.reactions.some((r) => r.cardId === card.id)
+    )
+      doc.special.reactions.push({
+        cardId: card.id,
+        onActions: ["play", "attack", "activate"],
+        discardAfterUse: true,
+      });
+    if (
+      roleOf(card.id) === "field_effect" &&
+      !doc.special.fields.some((r) => r.cardId === card.id)
+    )
+      doc.special.fields.push({
+        cardId: card.id,
+        modifiers: [{ kind: "atk", scope: "all", amount: 1, formatId: "" }],
+      });
+  }
   for (const [kind, enabled, randomId] of [
     ["roll", doc.definition.dice.length > 0, doc.definition.dice[0]?.id],
     ["flip", doc.definition.coins.length > 0, doc.definition.coins[0]?.id],
@@ -233,16 +332,18 @@ export function syncDocument(document: DesignerDocument): DesignerDocument {
   }));
   return doc;
 }
-export function changeTypeRole(
+export function changeTypeFormat(
   document: DesignerDocument,
   formatId: string,
-  role: string,
+  presetId: string,
 ): DesignerDocument {
   const doc = structuredClone(document);
   const format = doc.definition.formats.find((item) => item.id === formatId)!;
-  doc.rules.typeRoles.find((item) => item.formatId === formatId)!.role = role;
+  const preset = cardFormat(presetId);
+  doc.rules.typeRoles.find((item) => item.formatId === formatId)!.role =
+    preset.id;
   format.fields = [
-    ...(role === "fighter"
+    ...(preset.combat
       ? [
           { key: "atk", label: "Attack", kind: "number" },
           { key: "def", label: "Defense", kind: "number" },
@@ -251,13 +352,16 @@ export function changeTypeRole(
     { key: "text", label: "Description", kind: "text" },
   ];
   format.buttons = doc.definition.actions
-    .filter(
-      (a) => a.kind === "play" || (role === "fighter" && a.kind === "attack"),
-    )
+    .filter((a) => a.kind === "play" || (preset.combat && a.kind === "attack"))
     .map((a) => a.id);
   for (const card of doc.definition.cards.filter(
     (c) => c.formatId === formatId,
-  ))
+  )) {
+    if (!preset.effects)
+      card.actionIds = card.actionIds.filter(
+        (id) =>
+          doc.definition.actions.find((a) => a.id === id)?.kind !== "activate",
+      );
     card.values = format.fields.map(
       (field) =>
         card.values.find((v) => v.key === field.key) ?? {
@@ -266,6 +370,13 @@ export function changeTypeRole(
           textValue: field.kind === "text" ? "" : undefined,
         },
     );
+  }
+  doc.definition.actions = doc.definition.actions.filter(
+    (action) =>
+      action.kind !== "activate" ||
+      doc.definition.cards.some((c) => c.actionIds.includes(action.id)) ||
+      doc.definition.formats.some((f) => f.buttons.includes(action.id)),
+  );
   return doc;
 }
 export function blankEffect(kind = "damage"): CardEffect {

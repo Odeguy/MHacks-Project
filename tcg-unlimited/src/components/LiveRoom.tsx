@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  fieldAdjustment,
+  fieldModifierKinds,
+} from "../../spacetimedb/src/field-effects";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { displayCard, useGameData } from "../GameDataContext";
@@ -6,6 +10,7 @@ import { usePreview } from "../PreviewContext";
 import { CardFan, PlayingCard } from "../pages";
 import { Icon } from "../ui";
 import type { VisibleCardProjection } from "../module_bindings/types";
+import { legacyResourceRules, resourceCosts } from "../../spacetimedb/src/resources";
 
 export default function LiveRoom() {
   const data = useGameData();
@@ -17,6 +22,11 @@ export default function LiveRoom() {
   const [targetSeat, setTargetSeat] = useState<number | undefined>();
   const [targetCard, setTargetCard] = useState<number | undefined>();
   const [slotId, setSlotId] = useState<string | undefined>();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const room = data.rooms.find((item) => `room-${item.id}` === roomId);
   const version = data.versions.find((item) => item.id === room?.versionId);
   if (!data.ready) return <p role="status">Connecting to the room…</p>;
@@ -29,7 +39,9 @@ export default function LiveRoom() {
     );
 
   const definition = version.definition;
-  const extraRules = data.versionRuleRows.find((row) => row.versionId === version.id)?.rules;
+  const extraRules = data.versionRuleRows.find(
+    (row) => row.versionId === version.id,
+  )?.rules;
   const healthName = extraRules?.healthName ?? "LP";
   const sideColors = ["#94ceff", "#fca5a5", "#c5acf5", "#9ee8c7"];
   const gameId = `game-${version.gameId}`;
@@ -38,6 +50,33 @@ export default function LiveRoom() {
     .filter((item) => item.roomId === room.id)
     .sort((a, b) => a.seat - b.seat);
   const match = data.matches.find((item) => item.roomId === room.id);
+  const special = data.versionSpecialRows.find(
+    (row) => row.versionId === version.id,
+  )?.rules;
+  const resources = data.versionResourceRows.find(row => row.versionId === version.id)?.rules ?? legacyResourceRules(definition);
+  const balances = data.resourceBalances.find(row => row.matchId === match?.id)?.balances;
+  const resourceSummary = (seat: number) => resources.enabled ? resources.pools.map(pool => {
+    const amount = balances?.find(p => p.seat === seat)?.amounts.find(a => a.poolId === pool.id)?.amount
+      ?? (pool.id === resources.pools[0].id ? data.players.find(p => p.matchId === match?.id && p.seat === seat)?.resource ?? 0 : 0);
+    return `${amount} ${pool.name}`;
+  }).join(" · ") : "";
+  const reactionWindow = data.reactionWindows.find(
+    (row) => row.matchId === match?.id,
+  );
+  const secondsLeft = reactionWindow
+    ? Math.max(
+        0,
+        Math.ceil(
+          (Number(reactionWindow.expiresAt.microsSinceUnixEpoch / 1000n) -
+            now) /
+            1000,
+        ),
+      )
+    : 0;
+  const myReaction =
+    !!reactionWindow &&
+    reactionWindow.responseSeat === member?.seat &&
+    secondsLeft > 0;
   const players = data.players
     .filter((item) => item.matchId === match?.id)
     .sort((a, b) => a.seat - b.seat);
@@ -70,10 +109,21 @@ export default function LiveRoom() {
   const sourceFormat = definition.formats.find(
     (format) => format.id === sourceDefinition?.formatId,
   );
-  const allowed = definition.actions.filter(
-    (action) =>
-      phase?.allowedActionIds.includes(action.id) &&
-      (!subPhase || subPhase.allowedActionIds.includes(action.id)),
+  const allowed = definition.actions.filter((action) =>
+    myReaction
+      ? action.kind === "activate" &&
+        !!source &&
+        special?.reactions.some(
+          (r) =>
+            r.cardId === source.cardId &&
+            r.onActions.includes(reactionWindow!.actionKind),
+        )
+      : phase?.allowedActionIds.includes(action.id) &&
+        (!subPhase || subPhase.allowedActionIds.includes(action.id)) &&
+        !(
+          action.kind === "activate" &&
+          special?.reactions.some((r) => r.cardId === source?.cardId)
+        ),
   );
   const actions = allowed.filter(
     (action) =>
@@ -89,6 +139,7 @@ export default function LiveRoom() {
     match?.status === "active" &&
     match.activeSeat === member?.seat &&
     !me?.eliminated;
+  const canAct = !me?.eliminated && (myReaction || (myTurn && !reactionWindow));
   const selectSource = (card: VisibleCardProjection) => {
     setSourceId(sourceId === card.instanceId ? undefined : card.instanceId);
     setActionId(
@@ -98,7 +149,7 @@ export default function LiveRoom() {
     setSlotId(undefined);
   };
   const renderCard = (card: VisibleCardProjection) => {
-    const definitionCard = displayCard(version.id, definition, card.cardId);
+    const definitionCard = displayCard(version.id, definition, card.cardId, resources);
     const formatId = definition.cards.find(
       (item) => item.id === card.cardId,
     )?.formatId;
@@ -127,7 +178,7 @@ export default function LiveRoom() {
       action.effects.some(
         (effect) => effect.kind === "move" && effect.zone === "field",
       );
-    const success = await data.takeAction(match.id, match.revision, {
+    const input = {
       actionId: action.id,
       sourceInstanceId: action.sourceZone === "none" ? undefined : sourceId,
       targetSeat: needsPlayer
@@ -135,7 +186,16 @@ export default function LiveRoom() {
         : undefined,
       targetInstanceId: needsCard ? targetCard : undefined,
       slotId: needsSlot ? (slot ?? slotId) : undefined,
-    });
+    };
+    const success = myReaction
+      ? await data.call((connection) =>
+          connection.reducers.reactToAction({
+            matchId: match.id,
+            expectedRevision: match.revision,
+            input,
+          }),
+        )
+      : await data.takeAction(match.id, match.revision, input);
     if (success) {
       setSourceId(undefined);
       setTargetCard(undefined);
@@ -339,6 +399,77 @@ export default function LiveRoom() {
             </div>
             {subPhase && <span className="micro">{subPhase.name}</span>}
           </div>
+          {reactionWindow && (
+            <section
+              className="panel reaction-panel"
+              aria-label="Reaction window"
+            >
+              <div>
+                <strong>
+                  {myReaction
+                    ? "Your reaction"
+                    : `${nameOf(reactionWindow.responseSeat)} may react`}
+                </strong>
+                <p>
+                  {definition.actions.find(
+                    (a) => a.id === reactionWindow.actionId,
+                  )?.label ?? "Action"}{" "}
+                  by {nameOf(reactionWindow.originSeat)} resolved. {secondsLeft}
+                  s remaining.
+                </p>
+                <p>Select a placed Trap and activate its effect, or pass.</p>
+              </div>
+              {(myReaction || secondsLeft === 0) && (
+                <button
+                  className="button button-outline"
+                  disabled={data.pending}
+                  onClick={() =>
+                    void data.call((connection) =>
+                      connection.reducers.passReaction({
+                        matchId: match.id,
+                        expectedRevision: match.revision,
+                      }),
+                    )
+                  }
+                >
+                  {secondsLeft === 0 ? "Close expired window" : "Pass reaction"}
+                </button>
+              )}
+            </section>
+          )}
+          {visible.some(
+            (card) =>
+              card.zone === "field" &&
+              !players.find((p) => p.seat === card.ownerSeat)?.eliminated &&
+              special?.fields.some((f) => f.cardId === card.cardId),
+          ) && (
+            <section
+              className="panel field-rule-panel"
+              aria-label="Active field rules"
+            >
+              <strong>Active field rules</strong>
+              {visible
+                .filter(
+                  (card) =>
+                    card.zone === "field" &&
+                    !players.find((p) => p.seat === card.ownerSeat)
+                      ?.eliminated &&
+                    special?.fields.some((f) => f.cardId === card.cardId),
+                )
+                .map((card) => (
+                  <div key={card.id}>
+                    <b>{renderCard(card).name}</b>:{" "}
+                    {special!.fields
+                      .find((f) => f.cardId === card.cardId)!
+                      .modifiers.map(
+                        (m) =>
+                          `${m.amount >= 0 ? "+" : ""}${m.amount} ${fieldModifierKinds.find((kind) => kind.id === m.kind)?.label} (${m.scope === "all" ? "everyone" : m.scope === "owner" ? nameOf(card.ownerSeat) : `opponents of ${nameOf(card.ownerSeat)}`}${m.formatId ? `, ${definition.formats.find((f) => f.id === m.formatId)?.name}` : ""})`,
+                      )
+                      .join(" · ")}
+                  </div>
+                ))}
+            </section>
+          )}
           <div className="table-scene live-table">
             <div className="opponent-status">
               {opponents.map((player) => (
@@ -348,7 +479,7 @@ export default function LiveRoom() {
                     {player.health} <small>{healthName}</small>
                   </strong>
                   <span>
-                    {player.handCount} in hand · {player.resource} resource
+                    {player.handCount} in hand{resources.enabled && ` · ${resourceSummary(player.seat)}`}
                   </span>
                 </div>
               ))}
@@ -406,24 +537,42 @@ export default function LiveRoom() {
                           const mine =
                             slot.owner === "shared" ||
                             player.seat === member.seat;
-                          const typeId = extraRules?.slots.find((item) => item.slotId === slot.id)?.typeId;
-                          const slotName = extraRules?.slotTypes.find((item) => item.id === typeId)?.name ?? slot.id;
-                          const canPlace = !extraRules || !source || extraRules.cardSlots.find((item) => item.cardId === source.cardId)?.allowedTypeIds.includes(typeId ?? "");
+                          const typeId = extraRules?.slots.find(
+                            (item) => item.slotId === slot.id,
+                          )?.typeId;
+                          const slotName =
+                            extraRules?.slotTypes.find(
+                              (item) => item.id === typeId,
+                            )?.name ?? slot.id;
+                          const canPlace =
+                            !extraRules ||
+                            !source ||
+                            extraRules.cardSlots
+                              .find((item) => item.cardId === source.cardId)
+                              ?.allowedTypeIds.includes(typeId ?? "");
                           return (
                             <button
                               key={`${player.seat}:${slot.id}`}
                               className={`table-slot ${card?.instanceId === sourceId || card?.instanceId === targetCard ? "selected" : ""} ${!card && source?.zone === handSpace.id && mine ? "slot-available" : ""}`}
-                              style={{ borderColor: sideColors[player.seat % 4], backgroundColor: nightMode ? "#000" : `${sideColors[player.seat % 4]}22` }}
+                              style={{
+                                borderColor: sideColors[player.seat % 4],
+                                backgroundColor: nightMode
+                                  ? "#000"
+                                  : `${sideColors[player.seat % 4]}22`,
+                              }}
                               aria-label={
                                 card
                                   ? `${card.ownerSeat === member.seat ? "Select" : "Target"} ${renderCard(card).name} on ${slot.id}`
                                   : `Play in ${slotName} (${row + 1}, ${column + 1}), player ${player.seat + 1}`
                               }
                               disabled={
-                                !myTurn ||
+                                !canAct ||
                                 data.pending ||
                                 (!card &&
-                                  (!mine || !source || !canPlace || action?.kind !== "play"))
+                                  (!mine ||
+                                    !source ||
+                                    !canPlace ||
+                                    action?.kind !== "play"))
                               }
                               onClick={() => {
                                 if (card) {
@@ -461,7 +610,7 @@ export default function LiveRoom() {
               <strong>
                 {me?.health ?? 0} <small>{healthName}</small>
               </strong>
-              <span>{me?.resource ?? 0} resource</span>
+              {resources.enabled && me && <span>{resourceSummary(me.seat)}</span>}
             </div>
             <div className="player-hand" aria-label="Your hand">
               {hand.map((card, index) => (
@@ -474,7 +623,7 @@ export default function LiveRoom() {
                   whileHover={{ y: -18 }}
                   animate={{ y: sourceId === card.instanceId ? -22 : 0 }}
                   onClick={() => selectSource(card)}
-                  disabled={!myTurn || data.pending}
+                  disabled={!myTurn || !!reactionWindow || data.pending}
                   aria-label={`Select ${renderCard(card).name} from hand`}
                   aria-pressed={sourceId === card.instanceId}
                 >
@@ -487,9 +636,13 @@ export default function LiveRoom() {
                 ? match.winnerSeat === undefined
                   ? "DRAW"
                   : `${nameOf(match.winnerSeat)} WINS`
-                : myTurn
-                  ? "SELECT A CARD OR AN ACTION"
-                  : "WAITING FOR YOUR TURN"}
+                : reactionWindow
+                  ? myReaction
+                    ? "SELECT A TRAP OR PASS"
+                    : "WAITING FOR REACTIONS"
+                  : myTurn
+                    ? "SELECT A CARD OR AN ACTION"
+                    : "WAITING FOR YOUR TURN"}
             </p>
           </div>
           <div className="panel match-action-panel">
@@ -498,7 +651,7 @@ export default function LiveRoom() {
               <select
                 aria-label="Match action"
                 value={action?.id ?? ""}
-                disabled={!myTurn || data.pending}
+                disabled={!canAct || data.pending}
                 onChange={(event) => {
                   setActionId(event.target.value);
                   setTargetCard(undefined);
@@ -508,11 +661,17 @@ export default function LiveRoom() {
                 <option value="" disabled>
                   {actions.length
                     ? "Choose action"
-                    : "No actions in this phase"}
+                    : myReaction
+                      ? "Select an eligible Trap"
+                      : "No actions in this phase"}
                 </option>
                 {actions.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.label} · {item.resourceCost} resource
+                    {item.label}
+                    {resourceCosts(item, item.sourceZone === "none" ? "" : sourceDefinition?.id ?? "", resources,
+                      fieldAdjustment({ cards: visible, players }, special, "action_cost", member.seat,
+                        item.sourceZone === "none" ? "" : sourceDefinition?.formatId ?? "")
+                    ).map(c => ` · ${c.amount} ${resources.pools.find(p => p.id === c.poolId)!.name}`).join("")}
                   </option>
                 ))}
               </select>
@@ -594,14 +753,14 @@ export default function LiveRoom() {
             )}
             <button
               className="button button-light"
-              disabled={!myTurn || !action || data.pending}
+              disabled={!canAct || !action || data.pending}
               onClick={() => void act()}
             >
-              Perform action
+              {myReaction ? "React" : "Perform action"}
             </button>
             <button
               className="button button-outline"
-              disabled={!myTurn || data.pending}
+              disabled={!myTurn || !!reactionWindow || data.pending}
               onClick={() =>
                 void data.call((connection) =>
                   connection.reducers.advanceTurnPhase({

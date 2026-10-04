@@ -1,6 +1,14 @@
 import { t } from "spacetimedb/server";
 import db from "./schema";
-import { performDesignerAction, progressFor } from "./designer-rules";
+import {
+  performDesignerAction,
+  progressFor,
+  validatePlacementPermissions,
+} from "./designer-rules";
+import { reactionActions, reactionSeats, performReaction } from "./reactions";
+import { initializeResources, type ResourceContext } from "./resources";
+import { Timestamp } from "spacetimedb";
+import { leaveOtherLobbies, removeRoomMember } from "./rooms";
 import * as wire from "./contracts";
 import { requireRule, text, validateDeck } from "./validation";
 import {
@@ -102,8 +110,9 @@ export const createRoom = db.reducer(
       version(ctx, a.versionId);
       const rooms = [...ctx.db.room.host.filter(ctx.sender)];
       if (rooms.some((r) => r.requestId === a.requestId)) return;
+      leaveOtherLobbies(ctx, ctx.sender);
       requireRule(
-        rooms.filter((r) => r.status === "lobby" || r.status === "active")
+        [...ctx.db.room.host.filter(ctx.sender)].filter((r) => r.status === "lobby" || r.status === "active")
           .length < 10,
         "At most 10 open hosted rooms",
       );
@@ -137,6 +146,7 @@ export const joinRoom = db.reducer({ roomId: t.u64() }, (ctx, a) =>
     if (members.some((m) => m.owner.equals(ctx.sender))) return;
     const max = version(ctx, r.versionId).definition.participants.maximum;
     requireRule(members.length < max, "Room is full");
+    leaveOtherLobbies(ctx, ctx.sender, r.id);
     let seat = 0;
     while (members.some((m) => m.seat === seat)) seat++;
     ctx.db.roomMember.insert({
@@ -162,19 +172,7 @@ export const leaveRoom = db.reducer({ roomId: t.u64() }, (ctx, a) =>
         "Concede the active match before leaving",
       );
     }
-    ctx.db.roomMember.id.delete(m.id);
-    const remaining = [...ctx.db.roomMember.roomId.filter(r.id)].sort(
-      (a, b) => a.seat - b.seat,
-    );
-    ctx.db.room.id.update({
-      ...r,
-      playerCount: remaining.length,
-      status: remaining.length ? r.status : "closed",
-      host:
-        r.host.equals(ctx.sender) && remaining.length
-          ? remaining[0].owner
-          : r.host,
-    });
+    removeRoomMember(ctx, m.id);
   }),
 );
 export const selectDeck = db.reducer(
@@ -251,6 +249,8 @@ export const startMatch = db.reducer({ roomId: t.u64() }, (ctx, a) =>
     const state = initializeMatch(game, selections, (min, max) =>
       ctx.random.integerInRange(min, max),
     );
+    const resourceRules = ctx.db.versionResourceRules.versionId.find(r.versionId)?.rules;
+    const resources = resourceRules && initializeResources(state, resourceRules);
     const match = ctx.db.match.insert({
       id: 0n,
       roomId: r.id,
@@ -260,6 +260,7 @@ export const startMatch = db.reducer({ roomId: t.u64() }, (ctx, a) =>
       updatedAt: ctx.timestamp,
     });
     ctx.db.room.id.update({ ...r, status: "active", matchId: match.id });
+    if (resources) ctx.db.matchResourceBalances.insert({ matchId: match.id, balances: resources.balances });
     if (ctx.db.versionRules.versionId.find(r.versionId))
       ctx.db.matchRuleProgress.insert({
         matchId: match.id,
@@ -271,7 +272,14 @@ function gameForMatch(ctx: Ctx, id: bigint) {
   const match = ctx.db.match.id.find(id);
   requireRule(match, "Unknown match");
   const member = membership(ctx, match.roomId);
-  return { match, member, game: version(ctx, match.versionId).definition };
+  return { match, member, game: version(ctx, match.versionId).definition, resources: resourcesForMatch(ctx, match) };
+}
+function resourcesForMatch(ctx: Ctx, match: { id: bigint; versionId: bigint }): ResourceContext | undefined {
+  const rules = ctx.db.versionResourceRules.versionId.find(match.versionId)?.rules;
+  if (!rules) return undefined;
+  const row = ctx.db.matchResourceBalances.matchId.find(match.id);
+  requireRule(row, "Missing resource balances");
+  return { rules, balances: row.balances };
 }
 function record(
   ctx: Ctx,
@@ -281,8 +289,10 @@ function record(
   kind: string,
   actionId: string,
   outcomes: wire.RandomOutcome[],
+  resources?: wire.ResourceBalance[],
 ) {
   ctx.db.match.id.update({ ...match, state, updatedAt: ctx.timestamp });
+  if (resources) ctx.db.matchResourceBalances.matchId.update({ matchId: match.id, balances: resources });
   const progress = ctx.db.matchRuleProgress.matchId.find(match.id);
   if (progress)
     ctx.db.matchRuleProgress.matchId.update({
@@ -290,6 +300,7 @@ function record(
       progress: progressFor(state, progress.progress),
     });
   if (state.status === "finished") {
+    ctx.db.reactionWindow.matchId.delete(match.id);
     const r = getRoom(ctx, match.roomId);
     ctx.db.room.id.update({ ...r, status: "finished" });
   }
@@ -305,12 +316,161 @@ function record(
   });
 }
 const matchArgs = { matchId: t.u64(), expectedRevision: t.u32() };
+function openWindow(
+  ctx: Ctx,
+  match: ReturnType<typeof gameForMatch>["match"],
+  game: wire.GameDefinition,
+  state: wire.MatchState,
+  originSeat: number,
+  actionId: string,
+) {
+  const kind = game.actions.find((a) => a.id === actionId)!.kind;
+  const seats = reactionSeats(
+    game,
+    state,
+    ctx.db.versionSpecialRules.versionId.find(match.versionId)?.rules,
+    originSeat,
+    kind,
+    resourcesForMatch(ctx, match),
+  );
+  if (seats.length)
+    ctx.db.reactionWindow.insert({
+      matchId: match.id,
+      originSeat,
+      actionId,
+      actionKind: kind,
+      seats,
+      responseSeat: seats[0],
+      expiresAt: new Timestamp(
+        ctx.timestamp.microsSinceUnixEpoch + 30_000_000n,
+      ),
+    });
+}
+function ensureNoWindow(ctx: Ctx, matchId: bigint) {
+  const window = ctx.db.reactionWindow.matchId.find(matchId);
+  if (
+    window &&
+    window.expiresAt.microsSinceUnixEpoch <= ctx.timestamp.microsSinceUnixEpoch
+  )
+    ctx.db.reactionWindow.matchId.delete(matchId);
+  else requireRule(!window, "Wait for reactions or pass before continuing");
+}
+function continueWindow(
+  ctx: Ctx,
+  match: ReturnType<typeof gameForMatch>["match"],
+  game: wire.GameDefinition,
+  state: wire.MatchState,
+  skip: boolean,
+) {
+  const window = ctx.db.reactionWindow.matchId.find(match.id);
+  if (!window) return;
+  const special = ctx.db.versionSpecialRules.versionId.find(
+    match.versionId,
+  )?.rules;
+  const seats = window.seats.filter(
+    (seat) =>
+      (!skip || seat !== window.responseSeat) &&
+      reactionActions(game, state, special, seat, window.actionKind, resourcesForMatch(ctx, match)).length,
+  );
+  if (
+    !seats.length ||
+    state.status !== "active" ||
+    state.turn !== match.state.turn
+  )
+    ctx.db.reactionWindow.matchId.delete(match.id);
+  else
+    ctx.db.reactionWindow.matchId.update({
+      ...window,
+      seats,
+      responseSeat: seats[0],
+      expiresAt: new Timestamp(
+        ctx.timestamp.microsSinceUnixEpoch + 30_000_000n,
+      ),
+    });
+}
+export const passReaction = db.reducer(matchArgs, (ctx, a) =>
+  run(() => {
+    const { match, member, game } = gameForMatch(ctx, a.matchId);
+    requireRule(match.state.status === "active", "Match has ended");
+    requireRule(
+      match.state.revision === a.expectedRevision,
+      "Match changed; refresh before retrying",
+    );
+    const window = ctx.db.reactionWindow.matchId.find(match.id);
+    requireRule(window, "No reaction window is open");
+    const expired =
+      window.expiresAt.microsSinceUnixEpoch <=
+      ctx.timestamp.microsSinceUnixEpoch;
+    requireRule(
+      expired || window.responseSeat === member.seat,
+      "Only the current responder can pass",
+    );
+    const state = { ...match.state, revision: match.state.revision + 1 };
+    if (expired) ctx.db.reactionWindow.matchId.delete(match.id);
+    else continueWindow(ctx, match, game, state, true);
+    record(
+      ctx,
+      match,
+      state,
+      member.seat,
+      expired ? "reaction_timeout" : "reaction_pass",
+      "",
+      [],
+    );
+  }),
+);
+export const reactToAction = db.reducer(
+  { ...matchArgs, input: wire.actionInput },
+  (ctx, a) =>
+    run(() => {
+      const { match, member, game } = gameForMatch(ctx, a.matchId);
+      const window = ctx.db.reactionWindow.matchId.find(match.id);
+      requireRule(
+        window &&
+          window.expiresAt.microsSinceUnixEpoch >
+            ctx.timestamp.microsSinceUnixEpoch,
+        "No active reaction window",
+      );
+      requireRule(
+        window.responseSeat === member.seat,
+        "Wait for your reaction priority",
+      );
+      const result = performReaction(
+        game,
+        match.state,
+        ctx.db.versionSpecialRules.versionId.find(match.versionId)?.rules,
+        member.seat,
+        a.expectedRevision,
+        window.actionKind,
+        a.input,
+        (min, max) => ctx.random.integerInRange(min, max),
+        resourcesForMatch(ctx, match),
+      );
+      const rules = ctx.db.versionRules.versionId.find(match.versionId)?.rules;
+      if (rules) validatePlacementPermissions(result.state, rules);
+      record(
+        ctx,
+        match,
+        result.state,
+        member.seat,
+        "reaction",
+        a.input.actionId,
+        result.outcomes,
+        result.resources,
+      );
+      continueWindow(ctx, match, game, result.state, true);
+    }),
+);
 export const takeAction = db.reducer(
   { ...matchArgs, input: wire.actionInput },
   (ctx, a) =>
     run(() => {
       const { match, member, game } = gameForMatch(ctx, a.matchId);
+      ensureNoWindow(ctx, match.id);
       const rules = ctx.db.versionRules.versionId.find(match.versionId)?.rules;
+      const special = ctx.db.versionSpecialRules.versionId.find(
+        match.versionId,
+      )?.rules;
       const random = (min: number, max: number) =>
         ctx.random.integerInRange(min, max);
       const configured = rules
@@ -323,6 +483,8 @@ export const takeAction = db.reducer(
             random,
             rules,
             ctx.db.matchRuleProgress.matchId.find(match.id)?.progress,
+            special,
+            resourcesForMatch(ctx, match),
           )
         : undefined;
       const result =
@@ -334,6 +496,7 @@ export const takeAction = db.reducer(
           a.expectedRevision,
           a.input,
           (min, max) => ctx.random.integerInRange(min, max),
+          { special, resources: resourcesForMatch(ctx, match) },
         );
       if (configured)
         ctx.db.matchRuleProgress.matchId.update({
@@ -348,18 +511,31 @@ export const takeAction = db.reducer(
         "action",
         a.input.actionId,
         result.outcomes,
+        result.resources,
       );
+      if (result.state.status === "active")
+        openWindow(
+          ctx,
+          match,
+          game,
+          result.state,
+          member.seat,
+          a.input.actionId,
+        );
     }),
 );
 export const advanceTurnPhase = db.reducer(matchArgs, (ctx, a) =>
   run(() => {
     const { match, member, game } = gameForMatch(ctx, a.matchId);
+    ensureNoWindow(ctx, match.id);
     const result = advancePhase(
       game,
       match.state,
       member.seat,
       a.expectedRevision,
       (min, max) => ctx.random.integerInRange(min, max),
+      ctx.db.versionSpecialRules.versionId.find(match.versionId)?.rules,
+      resourcesForMatch(ctx, match),
     );
     record(
       ctx,
@@ -369,6 +545,7 @@ export const advanceTurnPhase = db.reducer(matchArgs, (ctx, a) =>
       "advance",
       "",
       result.outcomes,
+      result.resources,
     );
   }),
 );
@@ -379,8 +556,13 @@ export const concedeMatch = db.reducer(matchArgs, (ctx, a) =>
       match.state.revision === a.expectedRevision,
       "Match changed; refresh before retrying",
     );
-    const result = concede(game, match.state, member.seat, (min, max) =>
-      ctx.random.integerInRange(min, max),
+    const result = concede(
+      game,
+      match.state,
+      member.seat,
+      (min, max) => ctx.random.integerInRange(min, max),
+      ctx.db.versionSpecialRules.versionId.find(match.versionId)?.rules,
+      resourcesForMatch(ctx, match),
     );
     record(
       ctx,
@@ -390,6 +572,8 @@ export const concedeMatch = db.reducer(matchArgs, (ctx, a) =>
       "concede",
       "",
       result.outcomes,
+      result.resources,
     );
+    continueWindow(ctx, match, game, result.state, false);
   }),
 );

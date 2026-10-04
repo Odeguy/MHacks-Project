@@ -5,9 +5,61 @@ import db, {
   roomMember,
   matchEvent,
   draftRules,
+  draftSpecialRules,
+  draftResourceRules,
+  matchResourceBalances,
 } from "./schema";
 import { cardValue } from "./contracts";
 import { visibleCards, playerSummaries } from "./engine";
+import { effectiveCardValues } from "./field-effects";
+export const myDraftResourceRules = db.view(
+  { name: "my_draft_resource_rules", public: true },
+  t.array(draftResourceRules.rowType),
+  (ctx) => [...ctx.db.draftResourceRules.owner.filter(ctx.sender)],
+);
+export const myMatchResourceBalances = db.view(
+  { name: "my_match_resource_balances", public: true },
+  t.array(matchResourceBalances.rowType),
+  (ctx) => [...ctx.db.roomMember.owner.filter(ctx.sender)].flatMap(member => {
+    const match = ctx.db.match.roomId.find(member.roomId);
+    const row = match && ctx.db.matchResourceBalances.matchId.find(match.id);
+    return row ? [row] : [];
+  }),
+);
+export const myDraftSpecialRules = db.view(
+  { name: "my_draft_special_rules", public: true },
+  t.array(draftSpecialRules.rowType),
+  (ctx) => [...ctx.db.draftSpecialRules.owner.filter(ctx.sender)],
+);
+export const myReactionWindows = db.view(
+  { name: "my_reaction_windows", public: true },
+  t.array(
+    t.row("ReactionWindowProjection", {
+      matchId: t.u64().primaryKey(),
+      originSeat: t.u8(),
+      actionId: t.string(),
+      actionKind: t.string(),
+      responseSeat: t.u8(),
+      expiresAt: t.timestamp(),
+    }),
+  ),
+  (ctx) =>
+    [...ctx.db.roomMember.owner.filter(ctx.sender)].flatMap((member) => {
+      const match = ctx.db.match.roomId.find(member.roomId);
+      const window = match && ctx.db.reactionWindow.matchId.find(match.id);
+      if (!window || match!.state.status !== "active") return [];
+      return [
+        {
+          matchId: window.matchId,
+          originSeat: window.originSeat,
+          actionId: window.actionId,
+          actionKind: window.actionKind,
+          responseSeat: window.responseSeat,
+          expiresAt: window.expiresAt,
+        },
+      ];
+    }),
+);
 export const myDrafts = db.view(
   { name: "my_drafts", public: true },
   t.array(gameDraft.rowType),
@@ -136,6 +188,12 @@ export const visibleMatchCards = db.view(
       const game = ctx.db.gameVersion.id.find(match.versionId)!;
       return visibleCards(game.definition, match.state, m.seat).map((c) => ({
         ...c,
+        values: effectiveCardValues(
+          game.definition,
+          match.state,
+          c,
+          ctx.db.versionSpecialRules.versionId.find(match.versionId)?.rules,
+        ),
         id: `${match.id}:${c.id}`,
         instanceId: c.id,
         matchId: match.id,

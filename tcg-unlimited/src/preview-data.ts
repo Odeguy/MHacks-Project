@@ -87,6 +87,7 @@ export type PreviewCard = {
   attack: number;
   defense: number;
   cost: number;
+  resourceCosts?: { name: string; amount: number }[];
   variant: ArtVariant;
   text: string;
   stats?: { label: string; value: number }[];

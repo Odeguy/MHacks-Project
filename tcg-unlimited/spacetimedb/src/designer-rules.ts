@@ -4,9 +4,12 @@ import type {
   MatchState,
   RuleProgress,
   ActionInput,
+  SpecialRules,
 } from "./contracts";
 import { bounded, requireRule, text } from "./validation";
 import { performAction, type RandomInt } from "./engine";
+import { cardFormats } from "./card-formats";
+import { fieldAdjustment, clampLimit } from "./field-effects";
 
 const kinds = ["play", "activate", "attack", "draw", "roll", "flip"];
 function unique(items: { id: string }[], label: string, maximum: number) {
@@ -37,8 +40,10 @@ export function validateDesignerRules(
   );
   for (const type of rules.typeRoles)
     requireRule(
-      formats.has(type.formatId) && ["fighter", "effect"].includes(type.role),
-      "Invalid card type role",
+      formats.has(type.formatId) &&
+        (["fighter", "effect"].includes(type.role) ||
+          cardFormats.some((format) => format.id === type.role)),
+      "Invalid card type format",
     );
   requireRule(
     rules.slots.length === game.field.slots.length &&
@@ -82,9 +87,23 @@ export function validateDesignerRules(
       `No allowed field slot for ${definition.name}`,
     );
   }
-  const possibleDeckSize = game.cards.filter((card) => game.deckRules.allowedFormatIds.length === 0 || game.deckRules.allowedFormatIds.includes(card.formatId))
-    .reduce((sum, card) => sum + (game.deckRules.copyLimits.find((limit) => limit.cardId === card.id)?.maximum ?? game.deckRules.maxCopies), 0);
-  requireRule(possibleDeckSize >= game.deckRules.minSize, "Card copy limits cannot fill the minimum deck size");
+  const possibleDeckSize = game.cards
+    .filter(
+      (card) =>
+        game.deckRules.allowedFormatIds.length === 0 ||
+        game.deckRules.allowedFormatIds.includes(card.formatId),
+    )
+    .reduce(
+      (sum, card) =>
+        sum +
+        (game.deckRules.copyLimits.find((limit) => limit.cardId === card.id)
+          ?.maximum ?? game.deckRules.maxCopies),
+      0,
+    );
+  requireRule(
+    possibleDeckSize >= game.deckRules.minSize,
+    "Card copy limits cannot fill the minimum deck size",
+  );
   requireRule(
     rules.phases.length === game.phases.length &&
       new Set(rules.phases.map((phase) => phase.phaseId)).size ===
@@ -136,6 +155,8 @@ export function performDesignerAction(
   random: RandomInt,
   rules: DesignerRules,
   prior?: RuleProgress,
+  special?: SpecialRules,
+  resources?: import("./resources").ResourceContext,
 ) {
   const progress = progressFor(state, prior);
   const action = game.actions.find((item) => item.id === input.actionId);
@@ -144,6 +165,11 @@ export function performDesignerAction(
     (item) =>
       item.id ===
       state.cards.find((c) => c.id === input.sourceInstanceId)?.cardId,
+  );
+  requireRule(
+    action.kind !== "activate" ||
+      !special?.reactions.some((r) => r.cardId === card?.id),
+    "Trap effects require a reaction window",
   );
   const phase = rules.phases.find(
     (item) => item.phaseId === game.phases[state.phaseIndex].id,
@@ -163,21 +189,39 @@ export function performDesignerAction(
   requireRule(step, "Action/type is not allowed in this phase");
   const used =
     progress.counts.find((item) => item.stepId === step.id)?.count ?? 0;
-  requireRule(used < step.maximum, "Phase action limit reached");
+  const maximum = clampLimit(
+    step.maximum +
+      (action.kind === "attack"
+        ? fieldAdjustment(state, special, "attacks", seat)
+        : action.kind === "play"
+          ? fieldAdjustment(state, special, "plays", seat)
+          : action.kind === "draw"
+            ? fieldAdjustment(state, special, "turn_draw", seat)
+            : 0),
+  );
+  requireRule(used < maximum, "Phase action limit reached");
   requireRule(
     !phase.ordered || index >= progress.lastStep,
     "Follow the phase's action order",
   );
-  if (action.kind === "play")
-    requireRule(
-      progress.plays < rules.playsPerTurn,
-      "Plays per turn limit reached",
-    );
-  const result = performAction(game, state, seat, revision, input, random);
-  // Check all placements, including those caused by effects and triggers.
-  for (const instance of result.state.cards.filter(
-    (item) => item.zone === "field",
-  )) {
+  const result = performAction(game, state, seat, revision, input, random, {
+    special,
+    resources,
+  });
+  validatePlacementPermissions(result.state, rules);
+  progress.lastStep = index;
+  if (action.kind === "play") progress.plays++;
+  const count = progress.counts.find((item) => item.stepId === step.id);
+  if (count) count.count++;
+  else progress.counts.push({ stepId: step.id, count: 1 });
+  return { ...result, progress: progressFor(result.state, progress) };
+}
+export function validatePlacementPermissions(
+  state: MatchState,
+  rules: DesignerRules,
+) {
+  // Check placements caused by effects and triggers as well as normal plays.
+  for (const instance of state.cards.filter((item) => item.zone === "field")) {
     const typeId = rules.slots.find(
       (slot) => slot.slotId === instance.slotId,
     )?.typeId;
@@ -189,10 +233,4 @@ export function performDesignerAction(
       "Card is not allowed in this slot type",
     );
   }
-  progress.lastStep = index;
-  if (action.kind === "play") progress.plays++;
-  const count = progress.counts.find((item) => item.stepId === step.id);
-  if (count) count.count++;
-  else progress.counts.push({ stepId: step.id, count: 1 });
-  return { ...result, progress: progressFor(result.state, progress) };
 }

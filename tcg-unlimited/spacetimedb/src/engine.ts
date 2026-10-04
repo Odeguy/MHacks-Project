@@ -7,8 +7,15 @@ import type {
   GameDefinition,
   MatchState,
   RandomOutcome,
+  SpecialRules,
 } from "./contracts";
 import { bounded, requireRule, validateDeck, validateGame } from "./validation";
+import { resourceCosts, resourceValue, changeResource, type ResourceContext } from "./resources";
+import {
+  fieldAdjustment,
+  effectiveCardValues,
+  clampLimit,
+} from "./field-effects";
 
 export type RandomInt = (minimum: number, maximum: number) => number;
 export type DeckSelection = {
@@ -26,6 +33,8 @@ type Execution = {
   outcomes: RandomOutcome[];
   operations: number;
   depth: number;
+  special?: SpecialRules;
+  resources?: ResourceContext;
 };
 
 function cloneState(s: MatchState): MatchState {
@@ -58,8 +67,12 @@ function sourceCard(ctx: Execution) {
 function targetCard(ctx: Execution) {
   return ctx.state.cards.find((c) => c.id === ctx.input.targetInstanceId);
 }
-function cardStat(card: CardInstance | undefined, key: string) {
-  const value = card?.values.find((v) => v.key === key)?.numberValue;
+function cardStat(ctx: Execution, card: CardInstance | undefined, key: string) {
+  const value =
+    card &&
+    effectiveCardValues(ctx.game, ctx.state, card, ctx.special).find(
+      (v) => v.key === key,
+    )?.numberValue;
   requireRule(value !== undefined, `Card has no numeric ${key} field`);
   return value;
 }
@@ -74,9 +87,11 @@ function countZone(ctx: Execution, seat: number, zone: string) {
 }
 function conditionsPass(ctx: Execution, conditions: Condition[]) {
   return conditions.every((c) => {
+    if (c.kind === "resource_at_least" && ctx.resources && !ctx.resources.rules.enabled) return true;
     if (c.kind === "card_stat_at_least")
       return (
         cardStat(
+          ctx,
           c.target === "source_card" ? sourceCard(ctx) : targetCard(ctx),
           c.key,
         ) >= c.value
@@ -94,7 +109,9 @@ function conditionsPass(ctx: Execution, conditions: Condition[]) {
     const p = targetPlayer(ctx, c.target);
     switch (c.kind) {
       case "resource_at_least":
-        return p.resource >= c.value;
+        return ctx.resources
+          ? !ctx.resources.rules.enabled || resourceValue(ctx.resources, p.seat, c.key || undefined) >= c.value
+          : p.resource >= c.value;
       case "health_at_least":
         return p.health >= c.value;
       case "hand_count_at_most":
@@ -151,7 +168,16 @@ function moveCard(ctx: Execution, card: CardInstance, destination: string) {
     requireRule(space, "Unknown destination space");
     const capacity =
       space.kind === "hand"
-        ? Math.min(space.capacity, ctx.game.hand.maximum)
+        ? clampLimit(
+            Math.min(space.capacity, ctx.game.hand.maximum) +
+              fieldAdjustment(
+                ctx.state,
+                ctx.special,
+                "max_hand",
+                card.ownerSeat,
+              ),
+            1,
+          )
         : space.capacity;
     requireRule(
       card.zone === destination ||
@@ -172,7 +198,14 @@ function draw(ctx: Execution, seat: number, amount: number) {
   const cards = ctx.state.cards
     .filter((c) => c.ownerSeat === seat && c.zone === deck)
     .sort((a, b) => a.position - b.position);
-  const room = ctx.game.hand.maximum - countZone(ctx, seat, hand);
+  const room = Math.max(
+    0,
+    clampLimit(
+      ctx.game.hand.maximum +
+        fieldAdjustment(ctx.state, ctx.special, "max_hand", seat),
+      1,
+    ) - countZone(ctx, seat, hand),
+  );
   // A full hand leaves remaining cards in the deck; an empty deck causes no loss.
   cards.slice(0, Math.min(amount, room)).forEach((c) => moveCard(ctx, c, hand));
 }
@@ -203,14 +236,15 @@ function triggerCards(ctx: Execution, event: string, eventCard?: CardInstance) {
         },
       };
       if (conditionsPass(nested, tr.conditions))
-        applyEffects(nested, tr.effects);
+        applyEffects(nested, tr.effects, tr.id, true);
       ctx.operations = nested.operations;
     }
   }
 }
-function applyEffects(ctx: Execution, effects: Effect[]) {
-  for (const effect of effects) {
+function applyEffects(ctx: Execution, effects: Effect[], interactionId: string, isTrigger = false) {
+  for (const [effectIndex, effect] of effects.entries()) {
     requireRule(++ctx.operations <= 256, "Action exceeds 256 effects");
+    if (ctx.resources && !ctx.resources.rules.enabled && ["gain_resource", "spend_resource"].includes(effect.kind)) continue;
     if (effect.kind === "roll_dice") {
       const d = ctx.game.dice.find((d) => d.id === effect.randomId)!;
       ctx.outcomes.push({
@@ -237,7 +271,7 @@ function applyEffects(ctx: Execution, effects: Effect[]) {
           : undefined;
     let amount = effect.amount;
     if (effect.statKey && effect.kind !== "change_stat")
-      amount += cardStat(sourceCard(ctx), effect.statKey);
+      amount += cardStat(ctx, sourceCard(ctx), effect.statKey);
     if (effect.randomId) {
       const roll = [...ctx.outcomes]
         .reverse()
@@ -277,7 +311,13 @@ function applyEffects(ctx: Execution, effects: Effect[]) {
       continue;
     }
     if (effect.kind === "damage" && card) {
-      const defense = effect.defenseKey ? cardStat(card, effect.defenseKey) : 0;
+      const defense =
+        effect.defenseKey &&
+        card.values.some(
+          (v) => v.key === effect.defenseKey && v.numberValue !== undefined,
+        )
+          ? cardStat(ctx, card, effect.defenseKey)
+          : 0;
       if (amount > defense) {
         triggerCards(ctx, "damaged", card);
         moveCard(ctx, card, spaceId(ctx.game, "discard"));
@@ -296,11 +336,15 @@ function applyEffects(ctx: Execution, effects: Effect[]) {
         p.health = Math.min(ctx.game.startingHealth, p.health + amount);
         break;
       case "gain_resource":
-        p.resource = Math.min(1_000_000, p.resource + amount);
-        break;
       case "spend_resource":
-        requireRule(p.resource >= amount, "Insufficient resources");
-        p.resource -= amount;
+        if (ctx.resources) {
+          const poolId = ctx.resources.rules.effects.find(b => b.interactionId === interactionId && b.isTrigger === isTrigger && b.effectIndex === effectIndex)?.poolId ?? ctx.resources.rules.pools[0].id;
+          changeResource(ctx.resources, ctx.state, p.seat, poolId, effect.kind === "gain_resource" ? amount : -amount);
+        } else if (effect.kind === "gain_resource") p.resource = Math.min(1_000_000, p.resource + amount);
+        else {
+          requireRule(p.resource >= amount, "Insufficient resources");
+          p.resource -= amount;
+        }
         break;
       default:
         requireRule(false, "Unsupported effect");
@@ -313,6 +357,8 @@ function execution(
   actor: number,
   input: ActionInput,
   random: RandomInt,
+  special?: SpecialRules,
+  resources?: ResourceContext,
 ): Execution {
   return {
     game,
@@ -323,6 +369,8 @@ function execution(
     outcomes: [],
     operations: 0,
     depth: 0,
+    special,
+    resources: resources && { rules: resources.rules, balances: resources.balances.map(p => ({ ...p, amounts: p.amounts.map(a => ({ ...a })) })) },
   };
 }
 function emptyInput(): ActionInput {
@@ -409,15 +457,32 @@ export function performAction(
   expectedRevision: number,
   input: ActionInput,
   random: RandomInt,
+  options: {
+    special?: SpecialRules;
+    reaction?: boolean;
+    discardSource?: boolean;
+    resources?: ResourceContext;
+  } = {},
 ) {
   requireRule(original.status === "active", "Match has ended");
   requireRule(
     original.revision === expectedRevision,
     "Match changed; refresh before retrying",
   );
-  requireRule(original.activeSeat === seat, "It is not your turn");
+  requireRule(
+    options.reaction || original.activeSeat === seat,
+    "It is not your turn",
+  );
   const state = cloneState(original);
-  const ctx = execution(game, state, seat, { ...input }, random);
+  const ctx = execution(
+    game,
+    state,
+    seat,
+    { ...input },
+    random,
+    options.special,
+    options.resources,
+  );
   const actor = player(ctx, seat);
   requireRule(!actor.eliminated, "Player is eliminated");
   const a = game.actions.find((a) => a.id === input.actionId);
@@ -425,11 +490,16 @@ export function performAction(
   const phase = game.phases[state.phaseIndex];
   const sub = phase.subPhases[state.subPhaseIndex];
   requireRule(
-    phase.allowedActionIds.includes(a.id) &&
-      (!sub || sub.allowedActionIds.includes(a.id)),
+    options.reaction ||
+      (phase.allowedActionIds.includes(a.id) &&
+        (!sub || sub.allowedActionIds.includes(a.id))),
     "Action is not allowed in this phase",
   );
   const source = sourceCard(ctx);
+  requireRule(
+    !options.reaction || a.kind === "activate",
+    "Reactions must activate a Trap effect",
+  );
   if (a.sourceZone === "none")
     requireRule(
       input.sourceInstanceId === undefined,
@@ -505,7 +575,17 @@ export function performAction(
       u.cardInstanceId === (source?.id ?? 0),
   );
   requireRule(!a.oncePerTurn || !used, "Action already used this turn");
-  requireRule(actor.resource >= a.resourceCost, "Insufficient resources");
+  const sourceFormatId =
+    game.cards.find((c) => c.id === source?.cardId)?.formatId ?? "";
+  const costs = resourceCosts(a, source?.cardId ?? "", ctx.resources?.rules,
+    fieldAdjustment(state, options.special, "action_cost", seat, sourceFormatId));
+  const resourceCost = costs[0]?.amount ?? 0;
+  if (ctx.resources) {
+    for (const cost of costs) {
+      const pool = ctx.resources.rules.pools.find(p => p.id === cost.poolId)!;
+      requireRule(resourceValue(ctx.resources, seat, cost.poolId) >= cost.amount, `Insufficient ${pool.name}`);
+    }
+  } else requireRule(actor.resource >= resourceCost, "Insufficient resources");
   requireRule(
     conditionsPass(ctx, a.conditions),
     "Action conditions are not satisfied",
@@ -514,9 +594,11 @@ export function performAction(
     if (c.actionIds.length === 0 || c.actionIds.includes(a.id))
       requireRule(conditionsPass(ctx, c.conditions), c.message);
   }
-  actor.resource -= a.resourceCost;
+  if (ctx.resources) {
+    for (const cost of costs) changeResource(ctx.resources, state, seat, cost.poolId, -cost.amount);
+  } else actor.resource -= resourceCost;
   if (a.kind === "play") moveCard(ctx, source!, "field");
-  applyEffects(ctx, a.effects);
+  applyEffects(ctx, a.effects, a.id);
   const event =
     a.kind === "play"
       ? "played"
@@ -526,12 +608,14 @@ export function performAction(
           ? "activated"
           : undefined;
   if (event && source) triggerCards(ctx, event, source);
+  if (options.discardSource && source)
+    moveCard(ctx, source, spaceId(game, "discard"));
   if (a.oncePerTurn)
     state.uses.push({ seat, actionId: a.id, cardInstanceId: source?.id ?? 0 });
   checkVictory(state);
   recoverActivePlayer(ctx);
   state.revision++;
-  return { state, outcomes: ctx.outcomes };
+  return { state, outcomes: ctx.outcomes, resources: ctx.resources?.balances };
 }
 
 function nextTurn(ctx: Execution) {
@@ -549,8 +633,10 @@ function nextTurn(ctx: Execution) {
   ctx.actor = next;
   ctx.input = emptyInput();
   const p = player(ctx, next);
-  p.resource = Math.min(1_000_000, p.resource + game.setup.turnResource);
-  draw(ctx, next, game.setup.turnDraw);
+  if (ctx.resources) {
+    for (const pool of ctx.resources.rules.pools)
+      changeResource(ctx.resources, state, next, pool.id, pool.perTurn);
+  } else p.resource = Math.min(1_000_000, p.resource + game.setup.turnResource);
   triggerCards(ctx, "turn_started");
   checkVictory(state);
 }
@@ -585,6 +671,8 @@ export function advancePhase(
   seat: number,
   expectedRevision: number,
   random: RandomInt,
+  special?: SpecialRules,
+  resources?: ResourceContext,
 ) {
   requireRule(
     original.status === "active" && original.activeSeat === seat,
@@ -595,7 +683,7 @@ export function advancePhase(
     "Match changed; refresh before retrying",
   );
   const state = cloneState(original);
-  const ctx = execution(game, state, seat, emptyInput(), random);
+  const ctx = execution(game, state, seat, emptyInput(), random, special, resources);
   const phase = game.phases[state.phaseIndex];
   if (state.subPhaseIndex + 1 < phase.subPhases.length) {
     state.subPhaseIndex++;
@@ -610,7 +698,7 @@ export function advancePhase(
   checkVictory(state);
   recoverActivePlayer(ctx);
   state.revision++;
-  return { state, outcomes: ctx.outcomes };
+  return { state, outcomes: ctx.outcomes, resources: ctx.resources?.balances };
 }
 
 export function concede(
@@ -618,17 +706,19 @@ export function concede(
   original: MatchState,
   seat: number,
   random: RandomInt,
+  special?: SpecialRules,
+  resources?: ResourceContext,
 ) {
   requireRule(original.status === "active", "Match has ended");
   const state = cloneState(original);
   const p = state.players.find((p) => p.seat === seat);
   requireRule(p && !p.eliminated, "Player is not active");
   p.health = 0;
-  const ctx = execution(game, state, seat, emptyInput(), random);
+  const ctx = execution(game, state, seat, emptyInput(), random, special, resources);
   checkVictory(state);
   recoverActivePlayer(ctx);
   state.revision++;
-  return { state, outcomes: ctx.outcomes };
+  return { state, outcomes: ctx.outcomes, resources: ctx.resources?.balances };
 }
 
 // Public projections never include deck order, saved-deck IDs, or opponent hand identities.

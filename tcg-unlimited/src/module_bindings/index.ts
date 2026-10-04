@@ -60,7 +60,9 @@ import CreateWinConditionReducer from "./create_win_condition_reducer";
 import DeleteDeckReducer from "./delete_deck_reducer";
 import JoinRoomReducer from "./join_room_reducer";
 import LeaveRoomReducer from "./leave_room_reducer";
+import PassReactionReducer from "./pass_reaction_reducer";
 import PublishGameReducer from "./publish_game_reducer";
+import ReactToActionReducer from "./react_to_action_reducer";
 import SaveDeckReducer from "./save_deck_reducer";
 import SelectDeckReducer from "./select_deck_reducer";
 import SetNameReducer from "./set_name_reducer";
@@ -69,6 +71,8 @@ import StartMatchReducer from "./start_match_reducer";
 import TakeActionReducer from "./take_action_reducer";
 import UpdateDesignerDraftReducer from "./update_designer_draft_reducer";
 import UpdateGameDraftReducer from "./update_game_draft_reducer";
+import UpdateResourceDesignerDraftReducer from "./update_resource_designer_draft_reducer";
+import UpdateSpecialDesignerDraftReducer from "./update_special_designer_draft_reducer";
 import ValidateGameDraftReducer from "./validate_game_draft_reducer";
 
 // Import all procedure arg schemas
@@ -78,15 +82,21 @@ import GameVersionRow from "./game_version_table";
 import MatchHistoryRow from "./match_history_table";
 import MatchPlayersRow from "./match_players_table";
 import MyDecksRow from "./my_decks_table";
+import MyDraftResourceRulesRow from "./my_draft_resource_rules_table";
 import MyDraftRulesRow from "./my_draft_rules_table";
+import MyDraftSpecialRulesRow from "./my_draft_special_rules_table";
 import MyDraftsRow from "./my_drafts_table";
+import MyMatchResourceBalancesRow from "./my_match_resource_balances_table";
 import MyMatchesRow from "./my_matches_table";
 import MyMembershipsRow from "./my_memberships_table";
+import MyReactionWindowsRow from "./my_reaction_windows_table";
 import PublishedGameRow from "./published_game_table";
 import RoomRow from "./room_table";
 import RoomParticipantsRow from "./room_participants_table";
 import UserRow from "./user_table";
+import VersionResourceRulesRow from "./version_resource_rules_table";
 import VersionRulesRow from "./version_rules_table";
+import VersionSpecialRulesRow from "./version_special_rules_table";
 import VisibleMatchCardsRow from "./visible_match_cards_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -143,6 +153,17 @@ const tablesSchema = __schema({
       { name: 'user_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, UserRow),
+  versionResourceRules: __table({
+    name: 'version_resource_rules',
+    indexes: [
+      { accessor: 'versionId', name: 'version_resource_rules_version_id_idx_btree', algorithm: 'btree', columns: [
+        'versionId',
+      ] },
+    ],
+    constraints: [
+      { name: 'version_resource_rules_version_id_key', constraint: 'unique', columns: ['versionId'] },
+    ],
+  }, VersionResourceRulesRow),
   versionRules: __table({
     name: 'version_rules',
     indexes: [
@@ -154,6 +175,17 @@ const tablesSchema = __schema({
       { name: 'version_rules_version_id_key', constraint: 'unique', columns: ['versionId'] },
     ],
   }, VersionRulesRow),
+  versionSpecialRules: __table({
+    name: 'version_special_rules',
+    indexes: [
+      { accessor: 'versionId', name: 'version_special_rules_version_id_idx_btree', algorithm: 'btree', columns: [
+        'versionId',
+      ] },
+    ],
+    constraints: [
+      { name: 'version_special_rules_version_id_key', constraint: 'unique', columns: ['versionId'] },
+    ],
+  }, VersionSpecialRulesRow),
   matchHistory: __table({
     name: 'match_history',
     indexes: [
@@ -175,6 +207,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyDecksRow),
+  myDraftResourceRules: __table({
+    name: 'my_draft_resource_rules',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyDraftResourceRulesRow),
   myDraftRules: __table({
     name: 'my_draft_rules',
     indexes: [
@@ -182,6 +221,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyDraftRulesRow),
+  myDraftSpecialRules: __table({
+    name: 'my_draft_special_rules',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyDraftSpecialRulesRow),
   myDrafts: __table({
     name: 'my_drafts',
     indexes: [
@@ -189,6 +235,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyDraftsRow),
+  myMatchResourceBalances: __table({
+    name: 'my_match_resource_balances',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyMatchResourceBalancesRow),
   myMatches: __table({
     name: 'my_matches',
     indexes: [
@@ -203,6 +256,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyMembershipsRow),
+  myReactionWindows: __table({
+    name: 'my_reaction_windows',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyReactionWindowsRow),
   roomParticipants: __table({
     name: 'room_participants',
     indexes: [
@@ -247,7 +307,9 @@ const reducersSchema = __reducers(
   __reducerSchema("delete_deck", DeleteDeckReducer),
   __reducerSchema("join_room", JoinRoomReducer),
   __reducerSchema("leave_room", LeaveRoomReducer),
+  __reducerSchema("pass_reaction", PassReactionReducer),
   __reducerSchema("publish_game", PublishGameReducer),
+  __reducerSchema("react_to_action", ReactToActionReducer),
   __reducerSchema("save_deck", SaveDeckReducer),
   __reducerSchema("select_deck", SelectDeckReducer),
   __reducerSchema("set_name", SetNameReducer),
@@ -256,6 +318,8 @@ const reducersSchema = __reducers(
   __reducerSchema("take_action", TakeActionReducer),
   __reducerSchema("update_designer_draft", UpdateDesignerDraftReducer),
   __reducerSchema("update_game_draft", UpdateGameDraftReducer),
+  __reducerSchema("update_resource_designer_draft", UpdateResourceDesignerDraftReducer),
+  __reducerSchema("update_special_designer_draft", UpdateSpecialDesignerDraftReducer),
   __reducerSchema("validate_game_draft", ValidateGameDraftReducer),
 );
 

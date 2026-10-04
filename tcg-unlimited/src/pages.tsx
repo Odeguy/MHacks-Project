@@ -387,6 +387,9 @@ export function GameDetailsPage() {
   );
 }
 
+export function cardCostText(card: PreviewCard) {
+  return card.resourceCosts?.map(c => `${c.amount} ${c.name}`).join(" · ") ?? `${card.cost} Resource`;
+}
 export function PlayingCard({ card }: { card: PreviewCard }) {
   const { cardColorChoices } = usePreview();
   const hue = cardHue(cardColorChoices[card.id], card.name);
@@ -404,7 +407,11 @@ export function PlayingCard({ card }: { card: PreviewCard }) {
       <div className="playing-card">
         <div className="playing-card-top">
           <span>{card.type}</span>
-          <span className="card-cost">{card.cost}</span>
+          {card.resourceCosts ? (
+            <span className="card-resource-costs">
+              {card.resourceCosts.map(c => <span className="card-cost" key={c.name} title={`${c.amount} ${c.name}`}>{c.amount} {c.name}</span>)}
+            </span>
+          ) : <span className="card-cost">{card.cost}</span>}
         </div>
         <h3>{card.name}</h3>
         <p>{card.text}</p>
@@ -922,7 +929,7 @@ export function DeckBuilderPage() {
                       <div>
                         <b>{card.name}</b>
                         <span>
-                          {card.type} / {card.cost} resource
+                          {card.type}{cardCostText(card) && ` / ${cardCostText(card)}`}
                         </span>
                       </div>
                       <button
@@ -973,6 +980,9 @@ export function GameDesignerPage() {
 
 export function RoomsPage() {
   const data = useGameData();
+  const openRooms = data.rooms.filter(
+    (room) => ["lobby", "active"].includes(room.status) && room.playerCount > 0,
+  );
   const navigate = useNavigate();
   const create = async (id: string) => {
     const room = await data.createRoom(id);
@@ -982,7 +992,7 @@ export function RoomsPage() {
     <>
       <PageHeading eyebrow="" title="Rooms" copy="" />
       <div className="rooms-list">
-        {data.rooms.map((room) => (
+        {openRooms.map((room) => (
           <article className="panel room-list-item" key={String(room.id)}>
             <div>
               <h2>{room.name}</h2>
@@ -998,7 +1008,7 @@ export function RoomsPage() {
             </Link>
           </article>
         ))}
-        {data.ready && !data.rooms.length && <p>No rooms yet.</p>}
+        {data.ready && !openRooms.length && <p>No rooms yet.</p>}
       </div>
       <h2>Create a room</h2>
       <div className="room-create-options">

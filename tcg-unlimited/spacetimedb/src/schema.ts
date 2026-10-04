@@ -6,6 +6,9 @@ import {
   randomOutcome,
   designerRules,
   ruleProgress,
+  specialRules,
+  resourceRules,
+  resourceBalance,
 } from "./contracts";
 
 export const user = table(
@@ -19,6 +22,14 @@ export const connection = table(
   { name: "connection" },
   {
     id: t.connectionId().primaryKey(),
+    owner: t.identity().index("btree"),
+  },
+);
+export const lobbyCleanup = table(
+  { name: "lobby_cleanup" },
+  {
+    scheduledId: t.u64().primaryKey().autoInc(),
+    scheduledAt: t.scheduleAt(),
     owner: t.identity().index("btree"),
   },
 );
@@ -156,7 +167,53 @@ export const matchRuleProgress = table(
     progress: ruleProgress,
   },
 );
+export const draftSpecialRules = table(
+  { name: "draft_special_rules" },
+  {
+    draftId: t.u64().primaryKey(),
+    owner: t.identity().index("btree"),
+    rules: specialRules,
+  },
+);
+export const versionSpecialRules = table(
+  { name: "version_special_rules", public: true },
+  {
+    versionId: t.u64().primaryKey(),
+    rules: specialRules,
+  },
+);
+export const reactionWindow = table(
+  { name: "reaction_window" },
+  {
+    matchId: t.u64().primaryKey(),
+    originSeat: t.u8(),
+    actionId: t.string(),
+    actionKind: t.string(),
+    seats: t.array(t.u8()),
+    responseSeat: t.u8(),
+    expiresAt: t.timestamp(),
+  },
+);
+export const draftResourceRules = table(
+  { name: "draft_resource_rules" },
+  { draftId: t.u64().primaryKey(), owner: t.identity().index("btree"), rules: resourceRules },
+);
+export const versionResourceRules = table(
+  { name: "version_resource_rules", public: true },
+  { versionId: t.u64().primaryKey(), rules: resourceRules },
+);
+export const matchResourceBalances = table(
+  { name: "match_resource_balances" },
+  { matchId: t.u64().primaryKey(), balances: t.array(resourceBalance) },
+);
 const spacetimedb = schema({
+  draftResourceRules,
+  versionResourceRules,
+  matchResourceBalances,
+  lobbyCleanup,
+  draftSpecialRules,
+  versionSpecialRules,
+  reactionWindow,
   draftRules,
   versionRules,
   matchRuleProgress,

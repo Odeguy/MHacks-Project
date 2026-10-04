@@ -32,7 +32,9 @@ import CreateWinConditionReducer from "../create_win_condition_reducer";
 import DeleteDeckReducer from "../delete_deck_reducer";
 import JoinRoomReducer from "../join_room_reducer";
 import LeaveRoomReducer from "../leave_room_reducer";
+import PassReactionReducer from "../pass_reaction_reducer";
 import PublishGameReducer from "../publish_game_reducer";
+import ReactToActionReducer from "../react_to_action_reducer";
 import SaveDeckReducer from "../save_deck_reducer";
 import SelectDeckReducer from "../select_deck_reducer";
 import SetNameReducer from "../set_name_reducer";
@@ -41,6 +43,8 @@ import StartMatchReducer from "../start_match_reducer";
 import TakeActionReducer from "../take_action_reducer";
 import UpdateDesignerDraftReducer from "../update_designer_draft_reducer";
 import UpdateGameDraftReducer from "../update_game_draft_reducer";
+import UpdateResourceDesignerDraftReducer from "../update_resource_designer_draft_reducer";
+import UpdateSpecialDesignerDraftReducer from "../update_special_designer_draft_reducer";
 import ValidateGameDraftReducer from "../validate_game_draft_reducer";
 
 export type AddCoinParams = __Infer<typeof AddCoinReducer>;
@@ -69,7 +73,9 @@ export type CreateWinConditionParams = __Infer<typeof CreateWinConditionReducer>
 export type DeleteDeckParams = __Infer<typeof DeleteDeckReducer>;
 export type JoinRoomParams = __Infer<typeof JoinRoomReducer>;
 export type LeaveRoomParams = __Infer<typeof LeaveRoomReducer>;
+export type PassReactionParams = __Infer<typeof PassReactionReducer>;
 export type PublishGameParams = __Infer<typeof PublishGameReducer>;
+export type ReactToActionParams = __Infer<typeof ReactToActionReducer>;
 export type SaveDeckParams = __Infer<typeof SaveDeckReducer>;
 export type SelectDeckParams = __Infer<typeof SelectDeckReducer>;
 export type SetNameParams = __Infer<typeof SetNameReducer>;
@@ -78,5 +84,7 @@ export type StartMatchParams = __Infer<typeof StartMatchReducer>;
 export type TakeActionParams = __Infer<typeof TakeActionReducer>;
 export type UpdateDesignerDraftParams = __Infer<typeof UpdateDesignerDraftReducer>;
 export type UpdateGameDraftParams = __Infer<typeof UpdateGameDraftReducer>;
+export type UpdateResourceDesignerDraftParams = __Infer<typeof UpdateResourceDesignerDraftReducer>;
+export type UpdateSpecialDesignerDraftParams = __Infer<typeof UpdateSpecialDesignerDraftReducer>;
 export type ValidateGameDraftParams = __Infer<typeof ValidateGameDraftReducer>;
 

@@ -10,7 +10,7 @@ import {
   actionNames,
   blankAbility,
   blankEffect,
-  changeTypeRole,
+  changeTypeFormat,
   documentFromDefinition,
   newDocument,
   newId,
@@ -19,48 +19,27 @@ import {
   type DesignerDocument,
 } from "../designer-model";
 import type { CardEffect } from "../module_bindings/types";
+import {
+  cardFormats,
+  cardFormat,
+  normalizeCardFormat,
+} from "../../spacetimedb/src/card-formats";
 import "./GameCreationEditor.css";
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  min = 0,
-  max = 200,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-}) {
-  return (
-    <label className="form-label">
-      {label}
-      <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) =>
-          onChange(
-            Math.max(min, Math.min(max, Math.trunc(Number(e.target.value)))),
-          )
-        }
-      />
-    </label>
-  );
-}
+import SpecialCardEditor from "./SpecialCardEditor";
+import NumberField from "./NumberField";
+import ResourceEditor, { CardResourceCosts } from "./ResourceEditor";
+import { legacyResourceRules } from "../../spacetimedb/src/resources";
 export default function GameCreationEditor() {
   const data = useGameData();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const loadedQuery = useRef("");
   const [initial] = useState(newDocument);
-  const [doc, setDoc] = useLocalState<DesignerDocument>(
+  const [storedDoc, setDoc] = useLocalState<DesignerDocument>(
     "tcg:designer:v2",
     initial,
   );
+  const doc = { ...storedDoc, resources: storedDoc.resources ?? legacyResourceRules(storedDoc.definition) };
   const [tab, setTab] = useState("General");
   const [draftId, setDraftId] = useState<bigint>();
   const [revision, setRevision] = useState<number>();
@@ -81,11 +60,15 @@ export default function GameCreationEditor() {
       setParams({}, { replace: true });
       return;
     }
-    const next = documentFromDefinition(
-      draft.title,
-      draft.description,
-      draft.definition,
-      data.draftRuleRows.find((row) => row.draftId === draft.id)?.rules,
+    const next = syncDocument(
+      documentFromDefinition(
+        draft.title,
+        draft.description,
+        draft.definition,
+        data.draftRuleRows.find((row) => row.draftId === draft.id)?.rules,
+        data.draftSpecialRows.find((row) => row.draftId === draft.id)?.rules,
+        data.draftResourceRows.find((row) => row.draftId === draft.id)?.rules,
+      ),
     );
     setDoc(next);
     setDraftId(draft.id);
@@ -106,10 +89,17 @@ export default function GameCreationEditor() {
       load(id);
       loadedQuery.current = id;
     }
-  }, [params, data.ready, data.drafts, data.draftRuleRows]);
+  }, [
+    params,
+    data.ready,
+    data.drafts,
+    data.draftRuleRows,
+    data.draftSpecialRows,
+    data.draftResourceRows,
+  ]);
   const edit = (change: (draft: DesignerDocument) => void) =>
     setDoc((old) => {
-      const next = structuredClone(old);
+      const next = syncDocument(old);
       change(next);
       return syncDocument(next);
     });
@@ -175,7 +165,24 @@ export default function GameCreationEditor() {
     changeAbility((action) => {
       Object.assign(action.effects[index], changes);
     });
-  const role = rules.typeRoles.find((t) => t.formatId === card?.formatId)?.role;
+  const typePreset = (id: string) => {
+    const type = game.formats.find((f) => f.id === id);
+    const actionIds = [
+      ...(type?.buttons ?? []),
+      ...game.cards
+        .filter((c) => c.formatId === id)
+        .flatMap((c) => c.actionIds),
+    ];
+    return cardFormat(
+      normalizeCardFormat(
+        rules.typeRoles.find((t) => t.formatId === id)?.role ?? "basic_atk_def",
+        game.actions.some(
+          (a) => a.kind === "activate" && actionIds.includes(a.id),
+        ),
+      ),
+    );
+  };
+  const preset = typePreset(card?.formatId ?? "");
   const paint = (slotId: string) =>
     edit((d) => {
       d.rules.slots.find((s) => s.slotId === slotId)!.typeId =
@@ -217,7 +224,7 @@ export default function GameCreationEditor() {
                 setRevision(undefined);
                 loadedQuery.current = "";
                 setParams({}, { replace: true });
-                setSelectedCard(next.definition.cards[0].id);
+                setSelectedCard(next.definition.cards[0]?.id ?? "");
                 setPaintType(next.rules.slotTypes[0].id);
               }}
             >
@@ -313,24 +320,6 @@ export default function GameCreationEditor() {
                   }
                 />
                 <NumberField
-                  label="Draws per turn"
-                  value={game.setup.turnDraw}
-                  onChange={(v) =>
-                    edit((d) => {
-                      d.definition.setup.turnDraw = v;
-                    })
-                  }
-                />
-                <NumberField
-                  label="Plays per turn"
-                  value={rules.playsPerTurn}
-                  onChange={(v) =>
-                    edit((d) => {
-                      d.rules.playsPerTurn = v;
-                    })
-                  }
-                />
-                <NumberField
                   label="Minimum players"
                   value={game.participants.minimum}
                   min={2}
@@ -383,6 +372,7 @@ export default function GameCreationEditor() {
                   }
                 />
               </div>
+              <ResourceEditor document={doc} edit={edit} />
               <div className="creation-checks">
                 {["dice", "coin"].map((kind) => (
                   <label key={kind}>
@@ -433,22 +423,22 @@ export default function GameCreationEditor() {
                     />
                   </label>
                   <label className="form-label">
-                    Role
+                    Format
                     <select
-                      value={
-                        rules.typeRoles.find((t) => t.formatId === format.id)
-                          ?.role ?? "fighter"
-                      }
+                      value={typePreset(format.id).id}
                       onChange={(e) =>
                         setDoc(
                           syncDocument(
-                            changeTypeRole(doc, format.id, e.target.value),
+                            changeTypeFormat(doc, format.id, e.target.value),
                           ),
                         )
                       }
                     >
-                      <option value="fighter">Fighter</option>
-                      <option value="effect">Effect card</option>
+                      {cardFormats.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <button
@@ -498,7 +488,10 @@ export default function GameCreationEditor() {
                         .filter((a) => ["play", "attack"].includes(a.kind))
                         .map((a) => a.id),
                     });
-                    d.rules.typeRoles.push({ formatId: id, role: "fighter" });
+                    d.rules.typeRoles.push({
+                      formatId: id,
+                      role: "basic_atk_def",
+                    });
                     d.definition.deckRules.allowedFormatIds.push(id);
                   });
                 }}
@@ -507,8 +500,14 @@ export default function GameCreationEditor() {
                 Add card type
               </button>
               <p className="quiet-note">
-                Fighters have attack and defense. Effect cards use their
-                configured effects. Types in use cannot be removed.
+                Atk/Def formats include combat stats. Basic cards have no
+                effects; the other formats support configured effects. Types in
+                use cannot be removed.
+              </p>
+              <p className="quiet-note">
+                Trap/Reaction cards respond after an opponent's action. Field
+                Effect cards apply their rules while placed. Automatic instant
+                resolution and equip attachments are not implemented yet.
               </p>
             </>
           )}
@@ -520,9 +519,11 @@ export default function GameCreationEditor() {
                   Card
                   <select
                     aria-label="Edit card"
+                    disabled={!game.cards.length}
                     value={card?.id ?? ""}
                     onChange={(e) => setSelectedCard(e.target.value)}
                   >
+                    {!game.cards.length && <option value="">No cards yet</option>}
                     {game.cards.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -539,6 +540,7 @@ export default function GameCreationEditor() {
                   Create card
                 </button>
               </div>
+              {!card && <p>No cards yet. Create a card to start.</p>}
               {card && (
                 <>
                   <div className="form-grid">
@@ -684,246 +686,287 @@ export default function GameCreationEditor() {
                       ))}
                     </div>
                   </fieldset>
-                  <fieldset className="creation-section">
-                    <legend>
-                      {role === "fighter"
-                        ? "Fighter effect"
-                        : "Effect card effect"}
-                    </legend>
-                    {!ability ? (
-                      <button
-                        className="button button-outline"
-                        onClick={() => changeAbility(() => {})}
-                      >
-                        Add effect
-                      </button>
-                    ) : (
-                      <>
-                        <label className="form-label">
-                          Effect target
-                          <select
-                            value={ability.targetKind}
-                            onChange={(e) =>
-                              changeAbility((a) => {
-                                a.targetKind = e.target.value;
-                                for (const effect of a.effects)
-                                  if (
-                                    ["target_card", "target_player"].includes(
-                                      effect.target,
+                  <SpecialCardEditor
+                    document={doc}
+                    cardId={card.id}
+                    presetId={preset.id}
+                    edit={edit}
+                  />
+                  {game.actions.filter(a => [...card.actionIds, ...(game.formats.find(f => f.id === card.formatId)?.buttons ?? [])].includes(a.id)).map(a => (
+                    <CardResourceCosts key={a.id} document={doc} edit={edit} actionId={a.id} cardId={card.id} />
+                  ))}
+                  {preset.effects ? (
+                    <fieldset className="creation-section">
+                      <legend>
+                        {preset.id === "trap_reaction"
+                          ? "Reaction effect"
+                          : preset.id === "field_effect"
+                            ? "Activated effect (optional)"
+                            : `${preset.label} effect`}
+                      </legend>
+                      {!ability ? (
+                        <button
+                          className="button button-outline"
+                          onClick={() => changeAbility(() => {})}
+                        >
+                          Add effect
+                        </button>
+                      ) : (
+                        <>
+                          <label className="form-label">
+                            Effect target
+                            <select
+                              value={ability.targetKind}
+                              onChange={(e) =>
+                                changeAbility((a) => {
+                                  a.targetKind = e.target.value;
+                                  for (const effect of a.effects)
+                                    if (
+                                      ["target_card", "target_player"].includes(
+                                        effect.target,
+                                      )
                                     )
-                                  )
-                                    effect.target =
-                                      a.targetKind.endsWith("_card") &&
-                                      [
-                                        "damage",
-                                        "change_stat",
-                                        "discard",
-                                      ].includes(effect.kind)
-                                        ? "target_card"
-                                        : ["change_stat", "discard"].includes(
-                                              effect.kind,
-                                            )
-                                          ? "source_card"
-                                          : a.targetKind === "opponent"
-                                            ? "target_player"
-                                            : "actor";
-                              })
-                            }
-                          >
-                            <option value="self">Yourself</option>
-                            <option value="opponent">Opponent</option>
-                            <option value="own_card">Your field card</option>
-                            <option value="enemy_card">Enemy field card</option>
-                          </select>
-                        </label>
-                        <label className="creation-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={ability.oncePerTurn}
-                            onChange={(e) =>
-                              changeAbility((a) => {
-                                a.oncePerTurn = e.target.checked;
-                              })
-                            }
-                          />
-                          Effect once per card each turn
-                        </label>
-                        {ability.effects.map((effect, i) => {
-                          const cardTarget =
-                            ability.targetKind.endsWith("_card");
-                          const targets = ["discard", "change_stat"].includes(
-                            effect.kind,
-                          )
-                            ? [
-                                "source_card",
-                                ...(cardTarget ? ["target_card"] : []),
-                              ]
-                            : effect.kind === "damage"
+                                      effect.target =
+                                        a.targetKind.endsWith("_card") &&
+                                        [
+                                          "damage",
+                                          "change_stat",
+                                          "discard",
+                                        ].includes(effect.kind)
+                                          ? "target_card"
+                                          : ["change_stat", "discard"].includes(
+                                                effect.kind,
+                                              )
+                                            ? "source_card"
+                                            : a.targetKind === "opponent"
+                                              ? "target_player"
+                                              : "actor";
+                                })
+                              }
+                            >
+                              <option value="self">Yourself</option>
+                              <option value="opponent">Opponent</option>
+                              <option value="own_card">Your field card</option>
+                              <option value="enemy_card">
+                                Enemy field card
+                              </option>
+                            </select>
+                          </label>
+                          <label className="creation-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={ability.oncePerTurn}
+                              onChange={(e) =>
+                                changeAbility((a) => {
+                                  a.oncePerTurn = e.target.checked;
+                                })
+                              }
+                            />
+                            Effect once per card each turn
+                          </label>
+                          {ability.effects.map((effect, i) => {
+                            const cardTarget =
+                              ability.targetKind.endsWith("_card");
+                            const targets = ["discard", "change_stat"].includes(
+                              effect.kind,
+                            )
                               ? [
-                                  "actor",
                                   "source_card",
-                                  ...(cardTarget
-                                    ? ["target_card"]
-                                    : ability.targetKind === "opponent"
+                                  ...(cardTarget ? ["target_card"] : []),
+                                ]
+                              : effect.kind === "damage"
+                                ? [
+                                    "actor",
+                                    "source_card",
+                                    ...(cardTarget
+                                      ? ["target_card"]
+                                      : ability.targetKind === "opponent"
+                                        ? ["target_player"]
+                                        : []),
+                                  ]
+                                : [
+                                    "actor",
+                                    ...(ability.targetKind === "opponent"
                                       ? ["target_player"]
                                       : []),
-                                ]
-                              : [
-                                  "actor",
-                                  ...(ability.targetKind === "opponent"
-                                    ? ["target_player"]
-                                    : []),
-                                ];
-                          return (
-                            <div className="creation-effect-row" key={i}>
-                              <label className="form-label">
-                                Effect {i + 1}
-                                <select
-                                  value={effect.kind}
-                                  onChange={(e) =>
-                                    changeEffect(i, {
-                                      ...blankEffect(e.target.value),
-                                      target: [
-                                        "discard",
-                                        "change_stat",
-                                      ].includes(e.target.value)
-                                        ? "source_card"
-                                        : e.target.value === "damage" &&
-                                            ability.targetKind === "opponent"
-                                          ? "target_player"
-                                          : "actor",
-                                      statKey:
-                                        e.target.value === "change_stat"
-                                          ? "atk"
-                                          : "",
-                                    })
-                                  }
-                                >
-                                  {[
-                                    ["damage", "Damage"],
-                                    ["heal", "Heal"],
-                                    ["draw", "Draw"],
-                                    ["gain_resource", "Gain resource"],
-                                    ["change_stat", "Change stat"],
-                                    ["discard", "Discard"],
-                                  ].map(([value, label]) => (
-                                    <option key={value} value={value}>
-                                      {label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="form-label">
-                                Apply to
-                                <select
-                                  value={effect.target}
-                                  onChange={(e) =>
-                                    changeEffect(i, { target: e.target.value })
-                                  }
-                                >
-                                  {targets.map((target) => (
-                                    <option key={target} value={target}>
-                                      {
-                                        (
-                                          {
-                                            actor: "You",
-                                            source_card: "This card",
-                                            target_card: "Target card",
-                                            target_player: "Target player",
-                                          } as Record<string, string>
-                                        )[target]
-                                      }
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              {effect.kind !== "discard" && (
-                                <NumberField
-                                  label={`Amount ${i + 1}`}
-                                  value={effect.amount}
-                                  min={
-                                    effect.kind === "change_stat" ? -1000000 : 0
-                                  }
-                                  max={effect.kind === "draw" ? 200 : 1000000}
-                                  onChange={(v) =>
-                                    changeEffect(i, { amount: v })
-                                  }
-                                />
-                              )}
-                              {effect.kind === "change_stat" && (
+                                  ];
+                            return (
+                              <div className="creation-effect-row" key={i}>
                                 <label className="form-label">
-                                  Stat
+                                  Effect {i + 1}
                                   <select
-                                    value={effect.statKey}
+                                    value={effect.kind}
                                     onChange={(e) =>
                                       changeEffect(i, {
-                                        statKey: e.target.value,
+                                        ...blankEffect(e.target.value),
+                                        target: [
+                                          "discard",
+                                          "change_stat",
+                                        ].includes(e.target.value)
+                                          ? "source_card"
+                                          : e.target.value === "damage" &&
+                                              ability.targetKind === "opponent"
+                                            ? "target_player"
+                                            : "actor",
+                                        statKey:
+                                          e.target.value === "change_stat"
+                                            ? "atk"
+                                            : "",
                                       })
                                     }
                                   >
-                                    <option value="atk">Attack</option>
-                                    <option value="def">Defense</option>
+                                    {[
+                                      ["damage", "Damage"],
+                                      ["heal", "Heal"],
+                                      ["draw", "Draw"],
+                                      ["gain_resource", "Gain resource"],
+                                      ["spend_resource", "Spend resource"],
+                                      ["change_stat", "Change stat"],
+                                      ["discard", "Discard"],
+                                    ].filter(([value]) => doc.resources.enabled || !["gain_resource", "spend_resource"].includes(value) || value === effect.kind).map(([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
+                                      </option>
+                                    ))}
                                   </select>
                                 </label>
-                              )}
-                              <button
-                                className="text-button"
-                                aria-label={`Remove effect ${i + 1}`}
-                                onClick={() =>
-                                  changeAbility((a) => {
-                                    a.effects.splice(i, 1);
-                                  })
-                                }
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          );
-                        })}
-                        <div className="creation-row-actions">
-                          <button
-                            className="button button-outline"
-                            disabled={ability.effects.length >= 8}
-                            onClick={() =>
-                              changeAbility((a) => {
-                                a.effects.push({
-                                  ...blankEffect("heal"),
-                                  target: "actor",
-                                });
-                              })
-                            }
-                          >
-                            Add effect step
-                          </button>
-                          <button
-                            className="text-button"
-                            onClick={() =>
-                              edit((d) => {
-                                d.definition.cards.find(
-                                  (c) => c.id === card.id,
-                                )!.actionIds = card.actionIds.filter(
-                                  (id) => id !== ability.id,
-                                );
-                                d.definition.actions =
-                                  d.definition.actions.filter(
-                                    (a) => a.id !== ability.id,
+                                <label className="form-label">
+                                  Apply to
+                                  <select
+                                    value={effect.target}
+                                    onChange={(e) =>
+                                      changeEffect(i, {
+                                        target: e.target.value,
+                                      })
+                                    }
+                                  >
+                                    {targets.map((target) => (
+                                      <option key={target} value={target}>
+                                        {
+                                          (
+                                            {
+                                              actor: "You",
+                                              source_card: "This card",
+                                              target_card: "Target card",
+                                              target_player: "Target player",
+                                            } as Record<string, string>
+                                          )[target]
+                                        }
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                {["gain_resource", "spend_resource"].includes(effect.kind) && doc.resources.enabled && (
+                                  <label className="form-label">Resource pool
+                                    <select aria-label={`Effect ${i + 1} resource pool`} value={doc.resources.effects.find(b => b.interactionId === ability.id && !b.isTrigger && b.effectIndex === i)?.poolId ?? doc.resources.pools[0].id}
+                                      onChange={e => edit(d => {
+                                        const binding = d.resources.effects.find(b => b.interactionId === ability.id && !b.isTrigger && b.effectIndex === i);
+                                        if (binding) binding.poolId = e.target.value;
+                                        else d.resources.effects.push({ interactionId: ability.id, isTrigger: false, effectIndex: i, poolId: e.target.value });
+                                      })}>
+                                      {doc.resources.pools.map(pool => <option value={pool.id} key={pool.id}>{pool.name}</option>)}
+                                    </select>
+                                  </label>
+                                )}
+                                {effect.kind !== "discard" && (
+                                  <NumberField
+                                    label={`Amount ${i + 1}`}
+                                    value={effect.amount}
+                                    min={
+                                      effect.kind === "change_stat"
+                                        ? -1000000
+                                        : 0
+                                    }
+                                    max={effect.kind === "draw" ? 200 : 1000000}
+                                    onChange={(v) =>
+                                      changeEffect(i, { amount: v })
+                                    }
+                                  />
+                                )}
+                                {effect.kind === "change_stat" && (
+                                  <label className="form-label">
+                                    Stat
+                                    <select
+                                      value={effect.statKey}
+                                      onChange={(e) =>
+                                        changeEffect(i, {
+                                          statKey: e.target.value,
+                                        })
+                                      }
+                                    >
+                                      <option value="atk">Attack</option>
+                                      <option value="def">Defense</option>
+                                    </select>
+                                  </label>
+                                )}
+                                <button
+                                  className="text-button"
+                                  aria-label={`Remove effect ${i + 1}`}
+                                  onClick={() =>
+                                    edit((d) => {
+                                      d.definition.actions.find(a => a.id === ability.id)!.effects.splice(i, 1);
+                                      d.resources.effects = d.resources.effects.filter(b => b.interactionId !== ability.id || b.isTrigger || b.effectIndex !== i);
+                                      for (const b of d.resources.effects)
+                                        if (b.interactionId === ability.id && !b.isTrigger && b.effectIndex > i) b.effectIndex--;
+                                    })
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div className="creation-row-actions">
+                            <button
+                              className="button button-outline"
+                              disabled={ability.effects.length >= 8}
+                              onClick={() =>
+                                changeAbility((a) => {
+                                  a.effects.push({
+                                    ...blankEffect("heal"),
+                                    target: "actor",
+                                  });
+                                })
+                              }
+                            >
+                              Add effect step
+                            </button>
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                edit((d) => {
+                                  d.definition.cards.find(
+                                    (c) => c.id === card.id,
+                                  )!.actionIds = card.actionIds.filter(
+                                    (id) => id !== ability.id,
                                   );
-                              })
-                            }
-                          >
-                            Remove ability
-                          </button>
-                        </div>
-                        <p className="quiet-note">
-                          Place the card in an allowed slot, then activate its
-                          effect. Effects resolve from top to bottom.
-                        </p>
-                      </>
-                    )}
-                  </fieldset>
+                                  d.definition.actions =
+                                    d.definition.actions.filter(
+                                      (a) => a.id !== ability.id,
+                                    );
+                                })
+                              }
+                            >
+                              Remove ability
+                            </button>
+                          </div>
+                          <p className="quiet-note">
+                            {preset.id === "trap_reaction"
+                              ? "Place this Trap first, then select it during a reaction window."
+                              : "Place the card in an allowed slot, then activate its effect."}{" "}
+                            Effects resolve from top to bottom.
+                          </p>
+                        </>
+                      )}
+                    </fieldset>
+                  ) : (
+                    <p className="quiet-note">
+                      Basic Atk/Def cards have no effects. Choose Effect Atk/Def
+                      for this type to add them.
+                    </p>
+                  )}
                   <button
                     className="text-button"
-                    disabled={game.cards.length === 1}
                     onClick={() =>
                       edit((d) => {
                         d.definition.cards = d.definition.cards.filter(
@@ -1434,12 +1477,13 @@ export default function GameCreationEditor() {
               cards
             </p>
             <p>
-              {game.hand.initial} in hand · {game.setup.turnDraw} drawn/turn ·{" "}
-              {rules.playsPerTurn} plays/turn
+              {game.hand.initial} in hand · {game.hand.maximum} maximum
             </p>
-            <div className="creation-card-preview">
-              {card && <PlayingCard card={displayCard(0n, game, card.id)} />}
-            </div>
+            {card && (
+              <div className="creation-card-preview">
+                <PlayingCard card={displayCard(0n, game, card.id, doc.resources)} />
+              </div>
+            )}
             <p className="quiet-note">Unsaved edits stay in this browser.</p>
             <button
               className="button button-outline full-width"

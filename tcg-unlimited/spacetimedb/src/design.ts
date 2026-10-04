@@ -11,6 +11,8 @@ import {
 import { run, ownedDraft, insertDraft, type Ctx } from "./helpers";
 import { exampleGame } from "./example";
 import { validateDesignerRules } from "./designer-rules";
+import { validateSpecialRules } from "./special-rules";
+import { validateResourceRules } from "./resources";
 const draftArgs = { draftId: t.u64(), expectedRevision: t.u32() };
 function edit(
   ctx: Ctx,
@@ -54,42 +56,77 @@ export const createExampleDraft = db.reducer(
       ),
     ),
 );
-export const updateDesignerDraft = db.reducer(
-  {
-    ...draftArgs,
-    title: t.string(),
-    description: t.string(),
-    definition: wire.gameDefinition,
-    rules: wire.designerRules,
+const designerArgs = {
+  ...draftArgs,
+  title: t.string(),
+  description: t.string(),
+  definition: wire.gameDefinition,
+  rules: wire.designerRules,
+};
+function storeDesignerDraft(
+  ctx: Ctx,
+  a: {
+    draftId: bigint;
+    expectedRevision: number;
+    title: string;
+    description: string;
+    definition: wire.GameDefinition;
+    rules: wire.DesignerRules;
   },
-  (ctx, a) =>
-    run(() => {
-      const draft = ownedDraft(ctx, a.draftId, a.expectedRevision);
-      text(a.title, "Game title");
-      requireRule(
-        a.description.length <= 2000,
-        "Description exceeds 2000 characters",
-      );
-      validateDraftBounds(a.definition);
-      requireRule(
-        JSON.stringify(a.rules).length <= 50_000,
-        "Designer rules exceed 50 KB",
-      );
-      ctx.db.gameDraft.id.update({
-        ...draft,
-        title: a.title,
-        description: a.description,
-        definition: a.definition,
-        revision: draft.revision + 1,
-        validatedRevision: undefined,
-        validationError: "",
-        updatedAt: ctx.timestamp,
-      });
-      const row = { draftId: draft.id, owner: ctx.sender, rules: a.rules };
-      if (ctx.db.draftRules.draftId.find(draft.id))
-        ctx.db.draftRules.draftId.update(row);
-      else ctx.db.draftRules.insert(row);
-    }),
+  special?: wire.SpecialRules,
+) {
+  const draft = ownedDraft(ctx, a.draftId, a.expectedRevision);
+  text(a.title, "Game title");
+  requireRule(
+    a.description.length <= 2000,
+    "Description exceeds 2000 characters",
+  );
+  validateDraftBounds(a.definition);
+  requireRule(
+    JSON.stringify(a.rules).length <= 50_000,
+    "Designer rules exceed 50 KB",
+  );
+  ctx.db.gameDraft.id.update({
+    ...draft,
+    title: a.title,
+    description: a.description,
+    definition: a.definition,
+    revision: draft.revision + 1,
+    validatedRevision: undefined,
+    validationError: "",
+    updatedAt: ctx.timestamp,
+  });
+  const row = { draftId: draft.id, owner: ctx.sender, rules: a.rules };
+  if (ctx.db.draftRules.draftId.find(draft.id))
+    ctx.db.draftRules.draftId.update(row);
+  else ctx.db.draftRules.insert(row);
+  if (special) {
+    requireRule(
+      JSON.stringify(special).length <= 50_000,
+      "Special rules exceed 50 KB",
+    );
+    const row = { draftId: draft.id, owner: ctx.sender, rules: special };
+    if (ctx.db.draftSpecialRules.draftId.find(draft.id))
+      ctx.db.draftSpecialRules.draftId.update(row);
+    else ctx.db.draftSpecialRules.insert(row);
+  }
+}
+export const updateDesignerDraft = db.reducer(designerArgs, (ctx, a) =>
+  run(() => storeDesignerDraft(ctx, a)),
+);
+export const updateSpecialDesignerDraft = db.reducer(
+  { ...designerArgs, special: wire.specialRules },
+  (ctx, a) => run(() => storeDesignerDraft(ctx, a, a.special)),
+);
+export const updateResourceDesignerDraft = db.reducer(
+  { ...designerArgs, special: wire.specialRules, resources: wire.resourceRules },
+  (ctx, a) => run(() => {
+    requireRule(JSON.stringify(a.resources).length <= 100_000, "Resource rules exceed 100 KB");
+    storeDesignerDraft(ctx, a, a.special);
+    const row = { draftId: a.draftId, owner: ctx.sender, rules: a.resources };
+    if (ctx.db.draftResourceRules.draftId.find(a.draftId)) ctx.db.draftResourceRules.draftId.update(row);
+    else ctx.db.draftResourceRules.insert(row);
+  }),
 );
 export const updateGameDraft = db.reducer(
   {
@@ -280,8 +317,15 @@ export const validateGameDraft = db.reducer(draftArgs, (ctx, a) =>
     let validationError = "";
     try {
       validateGame(draft.definition);
+      const resources = ctx.db.draftResourceRules.draftId.find(draft.id);
+      if (resources) validateResourceRules(draft.definition, resources.rules);
       const extra = ctx.db.draftRules.draftId.find(draft.id);
       if (extra) validateDesignerRules(draft.definition, extra.rules);
+      const special = ctx.db.draftSpecialRules.draftId.find(draft.id);
+      if (special) {
+        requireRule(extra, "Special rules require designer rules");
+        validateSpecialRules(draft.definition, extra.rules, special.rules);
+      }
     } catch (e) {
       validationError = e instanceof Error ? e.message : "Invalid definition";
     }
@@ -313,8 +357,15 @@ export const publishGame = db.reducer(
         "Validate the current draft before publishing",
       );
       validateGame(draft.definition);
+      const resources = ctx.db.draftResourceRules.draftId.find(draft.id);
+      if (resources) validateResourceRules(draft.definition, resources.rules);
       const extra = ctx.db.draftRules.draftId.find(draft.id);
       if (extra) validateDesignerRules(draft.definition, extra.rules);
+      const special = ctx.db.draftSpecialRules.draftId.find(draft.id);
+      if (special) {
+        requireRule(extra, "Special rules require designer rules");
+        validateSpecialRules(draft.definition, extra.rules, special.rules);
+      }
       let game =
         a.gameId === undefined
           ? undefined
@@ -351,5 +402,12 @@ export const publishGame = db.reducer(
       });
       if (extra)
         ctx.db.versionRules.insert({ versionId: next.id, rules: extra.rules });
+      if (resources)
+        ctx.db.versionResourceRules.insert({ versionId: next.id, rules: resources.rules });
+      if (special)
+        ctx.db.versionSpecialRules.insert({
+          versionId: next.id,
+          rules: special.rules,
+        });
     }),
 );

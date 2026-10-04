@@ -17,6 +17,7 @@ import {
 } from "motion/react";
 
 import FlowBackground from "./components/FlowBackground";
+import menuIcon from "./assets/menu.svg";
 import { PreviewProvider, usePreview } from "./PreviewContext";
 import { GameDataProvider, useGameData } from "./GameDataContext";
 import {
@@ -157,7 +158,7 @@ function Shell() {
                             aria-pressed={nightMode}
                             onClick={() => setNightMode(!nightMode)}
                         >
-                            {nightMode ? "Day mode" : "Night mode"}
+                            {nightMode ? "Light cards" : "Dark cards"}
                         </button>
 
                         <Link className="header-create" to="/create">
@@ -245,7 +246,11 @@ function Shell() {
                         aria-controls="app-nav-links"
                         onClick={() => setNavOpen(!navOpen)}
                     >
-                        <Icon name={navOpen ? "close" : "menu"} size={22} />
+                        {navOpen ? (
+                            <Icon name="close" size={22} />
+                        ) : (
+                            <img src={menuIcon} width={22} height={22} alt="" />
+                        )}
                         <span className="nav-label">MENU</span>
                     </button>
 

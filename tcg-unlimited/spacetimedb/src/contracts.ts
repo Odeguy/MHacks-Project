@@ -133,6 +133,7 @@ export const participantLimits = t.object("ParticipantLimits", {
 export const setup = t.object("GameSetup", {
   startingResource: t.u32(),
   turnResource: t.u32(),
+  // Retained for stored schema compatibility; draws are phase actions.
   turnDraw: t.u16(),
 });
 export const gameDefinition = t.object("GameDefinition", {
@@ -222,6 +223,7 @@ export const phaseStep = t.object("PhaseActionStep", {
 });
 export const designerRules = t.object("DesignerRules", {
   healthName: t.string(),
+  // Retained for stored schema compatibility; phase steps enforce play limits.
   playsPerTurn: t.u16(),
   typeRoles: t.array(
     t.object("CardTypeRole", { formatId: t.string(), role: t.string() }),
@@ -257,3 +259,58 @@ export const ruleProgress = t.object("RuleProgress", {
 });
 export type DesignerRules = Infer<typeof designerRules>;
 export type RuleProgress = Infer<typeof ruleProgress>;
+
+export const fieldModifier = t.object("FieldModifier", {
+  kind: t.string(),
+  scope: t.string(),
+  amount: t.i32(),
+  formatId: t.string(),
+});
+export const specialRules = t.object("SpecialRules", {
+  reactions: t.array(
+    t.object("ReactionCardRule", {
+      cardId: t.string(),
+      onActions: t.array(t.string()),
+      discardAfterUse: t.bool(),
+    }),
+  ),
+  fields: t.array(
+    t.object("FieldCardRule", {
+      cardId: t.string(),
+      modifiers: t.array(fieldModifier),
+    }),
+  ),
+});
+export type SpecialRules = Infer<typeof specialRules>;
+export type FieldModifier = Infer<typeof fieldModifier>;
+
+export const resourceAmount = t.object("ResourceAmount", {
+  poolId: t.string(),
+  amount: t.u32(),
+});
+export const resourceRules = t.object("ResourceRules", {
+  enabled: t.bool(),
+  pools: t.array(t.object("ResourcePool", {
+    id: t.string(),
+    name: t.string(),
+    starting: t.u32(),
+    perTurn: t.u32(),
+  })),
+  costs: t.array(t.object("ResourceCost", {
+    actionId: t.string(),
+    cardId: t.string(),
+    amounts: t.array(resourceAmount),
+  })),
+  effects: t.array(t.object("ResourceEffectBinding", {
+    interactionId: t.string(),
+    isTrigger: t.bool(),
+    effectIndex: t.u16(),
+    poolId: t.string(),
+  })),
+});
+export const resourceBalance = t.object("ResourceBalance", {
+  seat: t.u8(),
+  amounts: t.array(resourceAmount),
+});
+export type ResourceRules = Infer<typeof resourceRules>;
+export type ResourceBalance = Infer<typeof resourceBalance>;

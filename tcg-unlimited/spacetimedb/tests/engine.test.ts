@@ -364,7 +364,7 @@ describe("authoritative matches", () => {
     const placed = play(g, start(g));
     expect(() => play(g, placed, 0, "unit_1")).toThrow("slots");
   });
-  it("advances sub-phases, phases, then turns and draws", () => {
+  it("advances sub-phases, phases, then turns without automatic draws", () => {
     const g = exampleGame();
     let s = start(g);
     s = advancePhase(g, s, 0, s.revision, rng).state;
@@ -379,7 +379,7 @@ describe("authoritative matches", () => {
       1, 2, 0, 0,
     ]);
     expect(s.players[1].resource).toBe(4);
-    expect(playerSummaries(g, s)[1].handCount).toBe(4);
+    expect(playerSummaries(g, s)[1].handCount).toBe(3);
   });
   it("caps hand size and leaves overflow in the deck", () => {
     const g = exampleGame();

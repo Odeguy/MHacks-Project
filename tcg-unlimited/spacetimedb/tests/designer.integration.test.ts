@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { DbConnection, tables } from "../../src/module_bindings";
-import { newDocument, syncDocument } from "../../src/designer-model";
+import { exampleDocument as newDocument, syncDocument } from "../../src/designer-model";
 const enabled = process.env.TCG_BACKEND_INTEGRATION === "1";
 const host = process.env.TCG_TEST_HOST ?? "ws://127.0.0.1:3199";
 const database = process.env.TCG_TEST_DATABASE ?? "tcg-backend-test";
@@ -52,6 +52,7 @@ describe.runIf(enabled)("published designer rules on SpacetimeDB", () => {
     doc.definition.hand.maximum = 5;
     doc.definition.setup.turnDraw = 2;
     doc.rules.playsPerTurn = 1;
+    doc.rules.phases[0].steps.find(s => s.kind === "play")!.maximum = 1;
     doc.rules.phases[0].ordered = true;
     const prepared = syncDocument(doc);
     await alice.reducers.createGameDraft({
@@ -178,14 +179,14 @@ describe.runIf(enabled)("published designer rules on SpacetimeDB", () => {
     await poll(() => current().revision === 1);
     await expect(
       take("play", cards[1].instanceId, slotFor(cards[1].cardId, firstSlot)),
-    ).rejects.toThrow("Plays per turn");
+    ).rejects.toThrow("Phase action limit");
     expect(current().revision).toBe(1);
     await take("draw");
     await poll(() => current().revision === 2);
     await expect(take("draw")).rejects.toThrow("Phase action limit");
     await expect(
       take("play", cards[1].instanceId, slotFor(cards[1].cardId, firstSlot)),
-    ).rejects.toThrow("action order");
+    ).rejects.toThrow("Phase action limit");
     for (let i = 0; i < prepared.definition.phases.length; i++) {
       const revision = current().revision;
       await alice.reducers.advanceTurnPhase({
@@ -196,7 +197,7 @@ describe.runIf(enabled)("published designer rules on SpacetimeDB", () => {
     }
     await poll(() =>
       [...bob.db.matchPlayers.iter()].some(
-        (p) => p.matchId === current().id && p.seat === 1 && p.handCount === 5,
+        (p) => p.matchId === current().id && p.seat === 1 && p.handCount === doc.definition.hand.initial,
       ),
     );
     expect(

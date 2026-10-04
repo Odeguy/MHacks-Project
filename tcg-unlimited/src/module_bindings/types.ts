@@ -144,6 +144,15 @@ export const DesignerRules = __t.object("DesignerRules", {
 });
 export type DesignerRules = __Infer<typeof DesignerRules>;
 
+export const DraftResourceRules = __t.object("DraftResourceRules", {
+  draftId: __t.u64(),
+  owner: __t.identity(),
+  get rules() {
+    return ResourceRules;
+  },
+});
+export type DraftResourceRules = __Infer<typeof DraftResourceRules>;
+
 export const DraftRules = __t.object("DraftRules", {
   draftId: __t.u64(),
   owner: __t.identity(),
@@ -153,6 +162,23 @@ export const DraftRules = __t.object("DraftRules", {
 });
 export type DraftRules = __Infer<typeof DraftRules>;
 
+export const DraftSpecialRules = __t.object("DraftSpecialRules", {
+  draftId: __t.u64(),
+  owner: __t.identity(),
+  get rules() {
+    return SpecialRules;
+  },
+});
+export type DraftSpecialRules = __Infer<typeof DraftSpecialRules>;
+
+export const FieldCardRule = __t.object("FieldCardRule", {
+  cardId: __t.string(),
+  get modifiers() {
+    return __t.array(FieldModifier);
+  },
+});
+export type FieldCardRule = __Infer<typeof FieldCardRule>;
+
 export const FieldDefinition = __t.object("FieldDefinition", {
   rows: __t.u8(),
   columns: __t.u8(),
@@ -161,6 +187,14 @@ export const FieldDefinition = __t.object("FieldDefinition", {
   },
 });
 export type FieldDefinition = __Infer<typeof FieldDefinition>;
+
+export const FieldModifier = __t.object("FieldModifier", {
+  kind: __t.string(),
+  scope: __t.string(),
+  amount: __t.i32(),
+  formatId: __t.string(),
+});
+export type FieldModifier = __Infer<typeof FieldModifier>;
 
 export const FieldSlot = __t.object("FieldSlot", {
   id: __t.string(),
@@ -325,6 +359,13 @@ export const HandSize = __t.object("HandSize", {
 });
 export type HandSize = __Infer<typeof HandSize>;
 
+export const LobbyCleanup = __t.object("LobbyCleanup", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+  owner: __t.identity(),
+});
+export type LobbyCleanup = __Infer<typeof LobbyCleanup>;
+
 export const Match = __t.object("Match", {
   id: __t.u64(),
   roomId: __t.u64(),
@@ -397,6 +438,14 @@ export const MatchProjection = __t.object("MatchProjection", {
 });
 export type MatchProjection = __Infer<typeof MatchProjection>;
 
+export const MatchResourceBalances = __t.object("MatchResourceBalances", {
+  matchId: __t.u64(),
+  get balances() {
+    return __t.array(ResourceBalance);
+  },
+});
+export type MatchResourceBalances = __Infer<typeof MatchResourceBalances>;
+
 export const MatchRuleProgress = __t.object("MatchRuleProgress", {
   matchId: __t.u64(),
   get progress() {
@@ -428,17 +477,29 @@ export type MatchState = __Infer<typeof MatchState>;
 export const MyDecks = __t.object("MyDecks", {});
 export type MyDecks = __Infer<typeof MyDecks>;
 
+export const MyDraftResourceRules = __t.object("MyDraftResourceRules", {});
+export type MyDraftResourceRules = __Infer<typeof MyDraftResourceRules>;
+
 export const MyDraftRules = __t.object("MyDraftRules", {});
 export type MyDraftRules = __Infer<typeof MyDraftRules>;
 
+export const MyDraftSpecialRules = __t.object("MyDraftSpecialRules", {});
+export type MyDraftSpecialRules = __Infer<typeof MyDraftSpecialRules>;
+
 export const MyDrafts = __t.object("MyDrafts", {});
 export type MyDrafts = __Infer<typeof MyDrafts>;
+
+export const MyMatchResourceBalances = __t.object("MyMatchResourceBalances", {});
+export type MyMatchResourceBalances = __Infer<typeof MyMatchResourceBalances>;
 
 export const MyMatches = __t.object("MyMatches", {});
 export type MyMatches = __Infer<typeof MyMatches>;
 
 export const MyMemberships = __t.object("MyMemberships", {});
 export type MyMemberships = __Infer<typeof MyMemberships>;
+
+export const MyReactionWindows = __t.object("MyReactionWindows", {});
+export type MyReactionWindows = __Infer<typeof MyReactionWindows>;
 
 export const ParticipantLimits = __t.object("ParticipantLimits", {
   minimum: __t.u8(),
@@ -497,6 +558,87 @@ export const RandomOutcome = __t.object("RandomOutcome", {
   coin: __t.string(),
 });
 export type RandomOutcome = __Infer<typeof RandomOutcome>;
+
+export const ReactionCardRule = __t.object("ReactionCardRule", {
+  cardId: __t.string(),
+  onActions: __t.array(__t.string()),
+  discardAfterUse: __t.bool(),
+});
+export type ReactionCardRule = __Infer<typeof ReactionCardRule>;
+
+export const ReactionWindow = __t.object("ReactionWindow", {
+  matchId: __t.u64(),
+  originSeat: __t.u8(),
+  actionId: __t.string(),
+  actionKind: __t.string(),
+  seats: __t.byteArray(),
+  responseSeat: __t.u8(),
+  expiresAt: __t.timestamp(),
+});
+export type ReactionWindow = __Infer<typeof ReactionWindow>;
+
+export const ReactionWindowProjection = __t.object("ReactionWindowProjection", {
+  matchId: __t.u64(),
+  originSeat: __t.u8(),
+  actionId: __t.string(),
+  actionKind: __t.string(),
+  responseSeat: __t.u8(),
+  expiresAt: __t.timestamp(),
+});
+export type ReactionWindowProjection = __Infer<typeof ReactionWindowProjection>;
+
+export const ResourceAmount = __t.object("ResourceAmount", {
+  poolId: __t.string(),
+  amount: __t.u32(),
+});
+export type ResourceAmount = __Infer<typeof ResourceAmount>;
+
+export const ResourceBalance = __t.object("ResourceBalance", {
+  seat: __t.u8(),
+  get amounts() {
+    return __t.array(ResourceAmount);
+  },
+});
+export type ResourceBalance = __Infer<typeof ResourceBalance>;
+
+export const ResourceCost = __t.object("ResourceCost", {
+  actionId: __t.string(),
+  cardId: __t.string(),
+  get amounts() {
+    return __t.array(ResourceAmount);
+  },
+});
+export type ResourceCost = __Infer<typeof ResourceCost>;
+
+export const ResourceEffectBinding = __t.object("ResourceEffectBinding", {
+  interactionId: __t.string(),
+  isTrigger: __t.bool(),
+  effectIndex: __t.u16(),
+  poolId: __t.string(),
+});
+export type ResourceEffectBinding = __Infer<typeof ResourceEffectBinding>;
+
+export const ResourcePool = __t.object("ResourcePool", {
+  id: __t.string(),
+  name: __t.string(),
+  starting: __t.u32(),
+  perTurn: __t.u32(),
+});
+export type ResourcePool = __Infer<typeof ResourcePool>;
+
+export const ResourceRules = __t.object("ResourceRules", {
+  enabled: __t.bool(),
+  get pools() {
+    return __t.array(ResourcePool);
+  },
+  get costs() {
+    return __t.array(ResourceCost);
+  },
+  get effects() {
+    return __t.array(ResourceEffectBinding);
+  },
+});
+export type ResourceRules = __Infer<typeof ResourceRules>;
 
 export const Room = __t.object("Room", {
   id: __t.u64(),
@@ -581,6 +723,16 @@ export const SlotType = __t.object("SlotType", {
 });
 export type SlotType = __Infer<typeof SlotType>;
 
+export const SpecialRules = __t.object("SpecialRules", {
+  get reactions() {
+    return __t.array(ReactionCardRule);
+  },
+  get fields() {
+    return __t.array(FieldCardRule);
+  },
+});
+export type SpecialRules = __Infer<typeof SpecialRules>;
+
 export const SubPhase = __t.object("SubPhase", {
   id: __t.string(),
   name: __t.string(),
@@ -604,6 +756,14 @@ export const User = __t.object("User", {
 });
 export type User = __Infer<typeof User>;
 
+export const VersionResourceRules = __t.object("VersionResourceRules", {
+  versionId: __t.u64(),
+  get rules() {
+    return ResourceRules;
+  },
+});
+export type VersionResourceRules = __Infer<typeof VersionResourceRules>;
+
 export const VersionRules = __t.object("VersionRules", {
   versionId: __t.u64(),
   get rules() {
@@ -611,6 +771,14 @@ export const VersionRules = __t.object("VersionRules", {
   },
 });
 export type VersionRules = __Infer<typeof VersionRules>;
+
+export const VersionSpecialRules = __t.object("VersionSpecialRules", {
+  versionId: __t.u64(),
+  get rules() {
+    return SpecialRules;
+  },
+});
+export type VersionSpecialRules = __Infer<typeof VersionSpecialRules>;
 
 export const VisibleCardProjection = __t.object("VisibleCardProjection", {
   id: __t.string(),
