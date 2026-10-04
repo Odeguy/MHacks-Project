@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cardKey, useGameData } from "../GameDataContext";
 import { validateDeck } from "../../spacetimedb/src/validation";
 import type { DeckEntry } from "../../spacetimedb/src/contracts";
+import { agentEndpoint } from "../agent-api";
 
 export default function DeckGenerator({
   gameId,
@@ -41,7 +42,7 @@ export default function DeckGenerator({
     setError("");
     setResult("");
     try {
-      const response = await fetch("/api/agent/deck", {
+      const response = await fetch(agentEndpoint("deck"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

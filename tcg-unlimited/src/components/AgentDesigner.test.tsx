@@ -12,10 +12,12 @@ import { newDocument } from "../designer-model";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("agent draft review", () => {
   it("previews generation and applies it only after the player chooses to", async () => {
+    vi.stubEnv("VITE_AGENT_URL", "https://tcg-unlimited-agent.onrender.com/");
     const document = newDocument();
     document.name = "Generated duel";
     const fetchMock = vi.fn().mockResolvedValue({
@@ -34,7 +36,7 @@ describe("agent draft review", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate game" }));
     await screen.findByText("Generated duel");
     expect(onApply).not.toHaveBeenCalled();
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/agent/design");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://tcg-unlimited-agent.onrender.com/api/agent/design");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
       prompt: "Make a fantasy duel",
     });

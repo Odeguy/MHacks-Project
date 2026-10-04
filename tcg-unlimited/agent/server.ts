@@ -7,10 +7,12 @@ import { pathToFileURL } from "node:url";
 import { designGame } from "./designer";
 import { generateDeck } from "./decks";
 import { AgentError, type GrokOptions } from "./grok";
+import { hostingFromEnvironment } from "./hosting";
 
-type Config = GrokOptions & { allowedOrigins?: string[] };
+type Config = GrokOptions & { allowedOrigins?: string[]; allowedHosts?: string[] };
 export function createAgentServer(config: Config) {
   let active = 0;
+  const allowedHosts = new Set((config.allowedHosts ?? []).map(host => host.toLowerCase()));
   const allowedOrigins = new Set(
     config.allowedOrigins ?? [
       "http://localhost:5173",
@@ -29,9 +31,33 @@ export function createAgentServer(config: Config) {
       const origin = req.headers.origin;
       if (origin && !allowedOrigins.has(origin))
         throw new AgentError("Origin is not allowed.", 403);
-      // The service intentionally listens on loopback only, including Host validation.
-      if (!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host ?? ""))
+      const host = (req.headers.host ?? "").toLowerCase();
+      if (!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) &&
+          !allowedHosts.has(host.replace(/:\d+$/, "")))
         throw new AgentError("Host is not allowed.", 403);
+      if (origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+      }
+      if (req.method === "OPTIONS") {
+        if (!origin) throw new AgentError("A browser origin is required.", 403);
+        if (!["/api/agent/design", "/api/agent/deck", "/api/agent/health"].includes(req.url ?? ""))
+          throw new AgentError("Not found.", 404);
+        if (!["GET", "POST"].includes(req.headers["access-control-request-method"] ?? ""))
+          throw new AgentError("Method is not allowed.", 405);
+        const headers = String(req.headers["access-control-request-headers"] ?? "")
+          .split(",").map(header => header.trim().toLowerCase()).filter(Boolean);
+        if (headers.some(header => header !== "content-type"))
+          throw new AgentError("Header is not allowed.", 403);
+        res.writeHead(204, {
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Max-Age": "600",
+          "Cache-Control": "no-store",
+        });
+        res.end();
+        return;
+      }
       if (req.method === "GET" && req.url === "/api/agent/health") {
         send(res, 200, {
           configured: !!config.apiKey && config.apiKey !== "your_api_key_here",
@@ -116,19 +142,16 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  const port = Number(process.env.AGENT_PORT ?? 8787);
-  if (!Number.isInteger(port) || port < 1 || port > 65535)
-    throw new Error("Invalid AGENT_PORT");
+  const hosting = hostingFromEnvironment(process.env);
   const server = createAgentServer({
     apiKey: process.env.XAI_API_KEY ?? "",
     model: process.env.XAI_MODEL || "grok-4.7",
-    allowedOrigins: process.env.AGENT_ALLOWED_ORIGINS?.split(",").map((s) =>
-      s.trim(),
-    ),
+    allowedOrigins: hosting.allowedOrigins,
+    allowedHosts: hosting.allowedHosts,
   });
-  server.listen(port, "127.0.0.1", () =>
+  server.listen(hosting.port, hosting.host, () =>
     console.log(
-      `Grok game designer listening at http://127.0.0.1:${port} (${process.env.XAI_API_KEY ? "key configured" : "add XAI_API_KEY to agent/.env"})`,
+      `Grok game designer listening at http://${hosting.host}:${hosting.port} (${process.env.XAI_API_KEY ? "key configured" : "add XAI_API_KEY to agent/.env"})`,
     ),
   );
 }

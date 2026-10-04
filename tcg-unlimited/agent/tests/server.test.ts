@@ -5,11 +5,12 @@ import { createAgentServer } from "../server";
 import { mockGrok, fixtureDocument, call } from "./fixtures";
 
 const servers: Server[] = [];
-async function start(apiKey = "test-key", fetchMock = mockGrok()) {
+async function start(apiKey = "test-key", fetchMock = mockGrok(), config: Partial<Parameters<typeof createAgentServer>[0]> = {}) {
   const server = createAgentServer({
     apiKey,
     model: "test-model",
     fetch: fetchMock,
+    ...config,
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -28,6 +29,54 @@ afterEach(async () => {
 });
 
 describe("agent HTTP service", () => {
+  it("accepts the Render hostname and serves allowed cross-origin preflights, responses and errors", async () => {
+    let calls = 0;
+    const upstream = mockGrok();
+    const origin = "https://tcg-unlimited.onrender.com";
+    const hostname = "tcg-unlimited-agent.onrender.com";
+    const url = await start("test-key", (async (...args) => {
+      calls++;
+      return upstream(...args);
+    }) as typeof fetch, { allowedOrigins: [origin], allowedHosts: [hostname] });
+    for (const path of ["design", "deck"]) {
+      const preflight = await fetch(`${url}/${path}`, { method: "OPTIONS", headers: {
+        Host: hostname, Origin: origin, "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      } });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
+      expect(preflight.headers.get("access-control-allow-headers")).toBe("Content-Type");
+      expect(preflight.headers.get("vary")).toBe("Origin");
+    }
+    expect(calls).toBe(0);
+    const response = await fetch(`${url}/design`, { method: "POST", headers: {
+      Host: hostname, Origin: origin, "Content-Type": "application/json",
+    }, body: JSON.stringify({ prompt: "Make a duel" }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    expect((await response.json()).document.name).toBe("Pocket duel");
+    const invalid = await fetch(`${url}/design`, { method: "POST", headers: {
+      Host: hostname, Origin: origin, "Content-Type": "application/json",
+    }, body: "{}" });
+    expect(invalid.status).toBe(400);
+    expect(invalid.headers.get("access-control-allow-origin")).toBe(origin);
+    expect((await fetch(`${url}/health`, { headers: { Host: hostname } })).status).toBe(200);
+  });
+  it("rejects unexpected cross-site origins and preflight methods/headers", async () => {
+    const origin = "https://tcg-unlimited.onrender.com";
+    const url = await start("test-key", mockGrok(), { allowedOrigins: [origin] });
+    const rejected = await fetch(`${url}/design`, { method: "OPTIONS", headers: {
+      Origin: "https://another-site.example", "Access-Control-Request-Method": "POST",
+    } });
+    expect(rejected.status).toBe(403);
+    expect(rejected.headers.get("access-control-allow-origin")).toBeNull();
+    expect((await fetch(`${url}/design`, { method: "OPTIONS", headers: {
+      Origin: origin, "Access-Control-Request-Method": "DELETE",
+    } })).status).toBe(405);
+    expect((await fetch(`${url}/deck`, { method: "OPTIONS", headers: {
+      Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-unknown",
+    } })).status).toBe(403);
+  });
   it("validates generated decks through the HTTP route and rejects missing game context", async () => {
     const document = fixtureDocument();
     const deck = { name: "Patrol", explanation: "Balanced cards", entries: document.definition.cards.map(card => ({ cardId: card.id, quantity: 2 })) };

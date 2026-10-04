@@ -42,6 +42,26 @@ allows two simultaneous generations, and bounds prompt, body, rounds and tool ca
 For public hosting, place it behind authenticated application access and account quotas;
 route `/api/agent` to this service through the web server. Static hosting alone cannot run it.
 
+## Render deployment
+
+Use the same repository, branch `main`, and root directory `tcg-unlimited`.
+For the agent Web Service, use build command `npm ci --include=dev && npm run agent:check`
+and start command `npm run agent:dev`. Set `NODE_VERSION=22.16.0`, `XAI_API_KEY`,
+`XAI_MODEL=grok-4.7`, and `AGENT_ALLOWED_ORIGINS=https://tcg-unlimited.onrender.com`.
+Set the health check path to `/api/agent/health`.
+
+Render supplies `PORT` and `RENDER_EXTERNAL_HOSTNAME`; the agent automatically binds
+to `0.0.0.0` there and accepts that exact hostname. Cross-origin preflights and responses
+permit only configured origins. Extra agent custom domains need `AGENT_ALLOWED_HOSTS`.
+Allowed origins are browser access control, not per-user authentication or credit quotas.
+The two-request concurrency cap remains; put public generation behind authenticated
+access and usage limits for unrestricted public use.
+
+On the Static Site, set `VITE_AGENT_URL` to the agent's actual public service URL
+(for example `https://tcg-unlimited-agent.onrender.com`) and rebuild/redeploy it.
+Keep `XAI_API_KEY` only on the Web Service. Empty `VITE_AGENT_URL` preserves local
+Vite proxy routing. No change to either generation timeout is needed for deployment.
+
 ## Tools and supported behavior
 
 Tools cover card formats (including custom numeric/text fields and buttons), player

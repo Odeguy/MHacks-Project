@@ -50,10 +50,12 @@ function Location() {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("deck generator in the lobby", () => {
   it("saves against the room version, selects the new deck, and stays in the lobby", async () => {
+    vi.stubEnv("VITE_AGENT_URL", "https://tcg-unlimited-agent.onrender.com/");
     const fetchMock = vi.fn();
     const result = setup(fetchMock);
     fetchMock.mockResolvedValue({ ok: true, json: async () => result });
@@ -66,6 +68,7 @@ describe("deck generator in the lobby", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Generate deck" }));
     await waitFor(() => expect(select).toHaveBeenCalledWith("deck-42"));
+    expect(fetchMock.mock.calls[0][0]).toBe("https://tcg-unlimited-agent.onrender.com/api/agent/deck");
     expect(mocks.save.mock.calls[0][0]).toMatchObject({
       gameId: "game-2",
       versionId: 7n,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DesignerDocument } from "../designer-model";
+import { agentEndpoint } from "../agent-api";
 
 type GeneratedDraft = { document: DesignerDocument; summary: string };
 
@@ -31,7 +32,7 @@ export default function AgentDesigner({
     setGenerated(undefined);
     setError("");
     try {
-      const response = await fetch("/api/agent/design", {
+      const response = await fetch(agentEndpoint("design"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
