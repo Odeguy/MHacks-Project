@@ -42,7 +42,9 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-The local publish script explicitly targets a database named `tcg-unlimited` on `local`. `.env.local` points the frontend there. Existing project configuration still names the remote database `dsdfsdf`; the Maincloud publish script uses that configuration. Deploying this replacement for the starter chat module needs a schema migration review. No script automatically deletes database data.
+The local publish script explicitly targets a database named `tcg-unlimited` on `local`. `.env.local` points the frontend there. The Maincloud publish configuration targets `tcg-unlmtd`. No script automatically deletes database data.
+
+Production builds load `.env.production`, connecting to `wss://maincloud.spacetimedb.com` and database `tcg-unlmtd`. If the Render Static Site already has `VITE_SPACETIMEDB_HOST` or `VITE_SPACETIMEDB_DB_NAME` environment variables, set them to those same values: Render's environment overrides the file. Set `VITE_AGENT_URL` there to the agent Web Service's actual public URL, then rebuild/redeploy the Static Site. The agent does not need database environment variables; the browser saves generated games and decks through SpacetimeDB reducers.
 
 ## Backend guide
 

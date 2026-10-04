@@ -4,5 +4,5 @@
   },
   "module-path": "./spacetimedb",
   "server": "maincloud",
-  "database": "dsdfsdf"
+  "database": "tcg-unlmtd"
 }
