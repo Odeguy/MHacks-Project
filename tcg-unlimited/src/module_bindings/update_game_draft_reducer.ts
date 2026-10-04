@@ -8,10 +8,18 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
 
-export default __t.row({
-  sender: __t.identity(),
-  sent: __t.timestamp(),
-  text: __t.string(),
-});
+import {
+  GameDefinition,
+} from "./types";
+
+export default {
+  draftId: __t.u64(),
+  expectedRevision: __t.u32(),
+  title: __t.string(),
+  description: __t.string(),
+  get definition() {
+    return GameDefinition;
+  },
+};

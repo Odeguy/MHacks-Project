@@ -3,11 +3,80 @@
 
 /* eslint-disable */
 /* tslint:disable */
-import { type Infer as __Infer } from 'spacetimedb';
+import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import SendMessageReducer from '../send_message_reducer';
-import SetNameReducer from '../set_name_reducer';
+import AddCoinReducer from "../add_coin_reducer";
+import AddDiceReducer from "../add_dice_reducer";
+import AdvanceTurnPhaseReducer from "../advance_turn_phase_reducer";
+import ConcedeMatchReducer from "../concede_match_reducer";
+import CreateCardReducer from "../create_card_reducer";
+import CreateCardFormatReducer from "../create_card_format_reducer";
+import CreateCardInteractionReducer from "../create_card_interaction_reducer";
+import CreateCardTriggerReducer from "../create_card_trigger_reducer";
+import CreateConstraintReducer from "../create_constraint_reducer";
+import CreateDeckRulesReducer from "../create_deck_rules_reducer";
+import CreateExampleDraftReducer from "../create_example_draft_reducer";
+import CreateFieldReducer from "../create_field_reducer";
+import CreateGameDraftReducer from "../create_game_draft_reducer";
+import CreateHandSizeReducer from "../create_hand_size_reducer";
+import CreateLifeReducer from "../create_life_reducer";
+import CreateParticipantLimitsReducer from "../create_participant_limits_reducer";
+import CreateRoomReducer from "../create_room_reducer";
+import CreateSetupReducer from "../create_setup_reducer";
+import CreateSpaceReducer from "../create_space_reducer";
+import CreateStarterDeckReducer from "../create_starter_deck_reducer";
+import CreateSubPhasesReducer from "../create_sub_phases_reducer";
+import CreateTurnPhasesReducer from "../create_turn_phases_reducer";
+import CreateWinConditionReducer from "../create_win_condition_reducer";
+import DeleteDeckReducer from "../delete_deck_reducer";
+import JoinRoomReducer from "../join_room_reducer";
+import LeaveRoomReducer from "../leave_room_reducer";
+import PublishGameReducer from "../publish_game_reducer";
+import SaveDeckReducer from "../save_deck_reducer";
+import SelectDeckReducer from "../select_deck_reducer";
+import SetNameReducer from "../set_name_reducer";
+import SetReadyReducer from "../set_ready_reducer";
+import StartMatchReducer from "../start_match_reducer";
+import TakeActionReducer from "../take_action_reducer";
+import UpdateDesignerDraftReducer from "../update_designer_draft_reducer";
+import UpdateGameDraftReducer from "../update_game_draft_reducer";
+import ValidateGameDraftReducer from "../validate_game_draft_reducer";
 
-export type SendMessageParams = __Infer<typeof SendMessageReducer>;
+export type AddCoinParams = __Infer<typeof AddCoinReducer>;
+export type AddDiceParams = __Infer<typeof AddDiceReducer>;
+export type AdvanceTurnPhaseParams = __Infer<typeof AdvanceTurnPhaseReducer>;
+export type ConcedeMatchParams = __Infer<typeof ConcedeMatchReducer>;
+export type CreateCardParams = __Infer<typeof CreateCardReducer>;
+export type CreateCardFormatParams = __Infer<typeof CreateCardFormatReducer>;
+export type CreateCardInteractionParams = __Infer<typeof CreateCardInteractionReducer>;
+export type CreateCardTriggerParams = __Infer<typeof CreateCardTriggerReducer>;
+export type CreateConstraintParams = __Infer<typeof CreateConstraintReducer>;
+export type CreateDeckRulesParams = __Infer<typeof CreateDeckRulesReducer>;
+export type CreateExampleDraftParams = __Infer<typeof CreateExampleDraftReducer>;
+export type CreateFieldParams = __Infer<typeof CreateFieldReducer>;
+export type CreateGameDraftParams = __Infer<typeof CreateGameDraftReducer>;
+export type CreateHandSizeParams = __Infer<typeof CreateHandSizeReducer>;
+export type CreateLifeParams = __Infer<typeof CreateLifeReducer>;
+export type CreateParticipantLimitsParams = __Infer<typeof CreateParticipantLimitsReducer>;
+export type CreateRoomParams = __Infer<typeof CreateRoomReducer>;
+export type CreateSetupParams = __Infer<typeof CreateSetupReducer>;
+export type CreateSpaceParams = __Infer<typeof CreateSpaceReducer>;
+export type CreateStarterDeckParams = __Infer<typeof CreateStarterDeckReducer>;
+export type CreateSubPhasesParams = __Infer<typeof CreateSubPhasesReducer>;
+export type CreateTurnPhasesParams = __Infer<typeof CreateTurnPhasesReducer>;
+export type CreateWinConditionParams = __Infer<typeof CreateWinConditionReducer>;
+export type DeleteDeckParams = __Infer<typeof DeleteDeckReducer>;
+export type JoinRoomParams = __Infer<typeof JoinRoomReducer>;
+export type LeaveRoomParams = __Infer<typeof LeaveRoomReducer>;
+export type PublishGameParams = __Infer<typeof PublishGameReducer>;
+export type SaveDeckParams = __Infer<typeof SaveDeckReducer>;
+export type SelectDeckParams = __Infer<typeof SelectDeckReducer>;
 export type SetNameParams = __Infer<typeof SetNameReducer>;
+export type SetReadyParams = __Infer<typeof SetReadyReducer>;
+export type StartMatchParams = __Infer<typeof StartMatchReducer>;
+export type TakeActionParams = __Infer<typeof TakeActionReducer>;
+export type UpdateDesignerDraftParams = __Infer<typeof UpdateDesignerDraftReducer>;
+export type UpdateGameDraftParams = __Infer<typeof UpdateGameDraftReducer>;
+export type ValidateGameDraftParams = __Infer<typeof ValidateGameDraftReducer>;
+

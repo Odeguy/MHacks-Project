@@ -8,8 +8,15 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
+import {
+  DesignerRules,
+} from "./types";
 
-export default {
-  text: __t.string(),
-};
+
+export default __t.row({
+  versionId: __t.u64().primaryKey().name("version_id"),
+  get rules() {
+    return DesignerRules;
+  },
+});

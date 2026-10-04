@@ -1,67 +1,55 @@
-# SpacetimeDB TypeScript Quickstart Chat
+# TCG Unlimited
 
-This is a simple chat application that demonstrates how to use SpacetimeDB with TypeScript and React. The chat application is a simple chat room where users can send messages to each other. The chat application uses SpacetimeDB to store the chat messages.
+Browser card games built from structured game definitions. React/Vite renders the client; a TypeScript SpacetimeDB module owns definitions, published versions, persistent decks, lobbies, and authoritative matches.
 
-It is based directly on the plain React + TypeScript + Vite template. You can follow the quickstart guide for how creating this project from scratch at [SpacetimeDB TypeScript Quickstart](https://spacetimedb.com/docs/quickstarts/typescript).
+The backend implements the planning document's creation tools and a bounded rule engine. The frontend now includes the collection, game details, design studio, saved decks, deck workshop, and lobby/table layouts, with a grayscale WebGL background and Motion animations. The model/provider and Fetch integration are separate choices. There is no AI referee.
 
-You can follow the instructions for creating your own SpacetimeDB module here: [SpacetimeDB Rust Module Quickstart](https://spacetimedb.com/docs/quickstarts/rust). Place the module in the `quickstart-chat/server` directory for compability with this project.
+The interface subscribes to SpacetimeDB for published games, saved decks, drafts, rooms, and matches. Deck edits, duplication, draft saving and publishing, lobby readiness, and match actions call the backend reducers. The first-person table keeps hands separate from the field, receives only permitted card data, and follows the published version's rules. On an empty database, use **Add starter games** to create three playable examples and saved decks.
 
-In order to run this example, you need to:
+Cards use pastel fills, dark text, and white collection surfaces by default. A header toggle restores night mode. Continuous hue sliders change card colors; these appearance preferences and favorites stay in the browser. Unsaved design settings are locally autosaved; **Save draft** stores them in SpacetimeDB, and **Saved drafts** resumes them. The manual designer starts from a bounded card/rule template; prompt-based AI generation remains to be implemented.
 
-- `pnpm build` in the root directory (`spacetimedb-typescriptsdk`)
-- `pnpm install` in this directory
-- `pnpm build` in this directory
-- `pnpm dev` in this directory to run the example
+**Create game** has General, Card types, Cards, Phases, and Field sections. Configure health and its name, hand/draw/play limits, fighter and effect types, card stats and copy limits, executable effects, ordered phase actions, and slot permissions. Paint slot types on the colored player areas; each player receives that layout, with hands kept separate. **Edit game rules** opens the owning draft from a game or deck. Publishing creates an immutable version: existing decks keep their original rules and new decks use the newly published version.
 
-Below is copied from the original template README:
+## Local development
 
-# React + TypeScript + Vite
+Install Node.js and the SpacetimeDB CLI, then run these commands from this directory:
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-});
+```powershell
+npm install
+npm --prefix spacetimedb install
+npm run backend:check
+npm test
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+Start the local database server in one terminal:
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react';
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-});
+```powershell
+spacetime start
 ```
+
+In another terminal:
+
+```powershell
+npm run spacetime:publish:local
+npm run spacetime:generate
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+The local publish script explicitly targets a database named `tcg-unlimited` on `local`. `.env.local` points the frontend there. Existing project configuration still names the remote database `dsdfsdf`; the Maincloud publish script uses that configuration. Deploying this replacement for the starter chat module needs a schema migration review. No script automatically deletes database data.
+
+## Backend guide
+
+See [spacetimedb/README.md](spacetimedb/README.md) for reducers, view subscriptions, game format semantics, the example game, and integration testing. Generated client bindings are in `src/module_bindings`; regenerate after modifying the module schema or reducer arguments.
+
+Useful commands:
+
+| Command                      | Purpose                                                 |
+| ---------------------------- | ------------------------------------------------------- |
+| `npm run backend:check`      | Type-check the module and backend tests                 |
+| `npm run backend:build`      | Compile the SpacetimeDB module                          |
+| `npm test`                   | Run engine tests; the local integration suite is opt-in |
+| `npm run spacetime:generate` | Regenerate the React/agent client SDK                   |
+| `npm run build`              | Type-check and build the frontend                       |
+
+If Vite cannot execute esbuild while loading its configuration in a restricted environment, use `npm run build -- --configLoader runner`.

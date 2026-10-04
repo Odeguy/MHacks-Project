@@ -1,0 +1,55 @@
+.flow-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #000;
+}
+
+.flow-background__canvas,
+.flow-background__fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.flow-background__fallback {
+  z-index: 0;
+  background:
+    radial-gradient(
+      ellipse at top left,
+      var(--background-tint),
+      transparent 70%
+    ),
+    #000;
+}
+.flow-background__fallback::before,
+.flow-background__fallback::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 28px;
+  background: var(--background-accent);
+  transform: rotate(-25deg);
+  left: 8%;
+  top: 13%;
+  opacity: 0.65;
+}
+.flow-background__fallback::after {
+  left: 28%;
+  top: 37%;
+  transform: rotate(35deg);
+  opacity: 0.35;
+}
+
+.flow-background__canvas {
+  z-index: 1;
+  display: block;
+  opacity: 0;
+}
+
+.flow-background__canvas[data-ready="true"] {
+  opacity: 1;
+}

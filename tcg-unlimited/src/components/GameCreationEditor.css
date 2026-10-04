@@ -1,0 +1,195 @@
+.creation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+.creation-workspace {
+  min-width: 0;
+}
+.creation-workspace h2 {
+  margin-bottom: 16px;
+}
+.creation-tabs {
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.creation-draft-picker,
+.creation-card-picker,
+.creation-type-row,
+.creation-phase-heading {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.creation-draft-picker .form-label,
+.creation-card-picker .form-label,
+.creation-type-row .form-label,
+.creation-phase-heading .form-label {
+  flex: 1;
+  min-width: 140px;
+  margin: 0;
+}
+.creation-section {
+  border: 2px solid #fff9;
+  padding: 16px;
+  margin: 22px 0;
+  min-width: 0;
+}
+.creation-section legend {
+  padding: 0 8px;
+  font-weight: bold;
+}
+.creation-checks,
+.creation-row-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.creation-checkbox,
+.creation-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.creation-checkbox {
+  margin: 16px 0;
+}
+.creation-workspace input[type="checkbox"] {
+  accent-color: #a4d2ef;
+  width: 16px;
+  height: 16px;
+}
+.creation-step-row,
+.creation-effect-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 12px 0;
+  border-top: 1px solid #fff5;
+}
+.creation-step-row .form-label,
+.creation-effect-row .form-label {
+  margin: 0;
+}
+.creation-step-buttons {
+  display: flex;
+  gap: 8px;
+}
+.creation-subphase {
+  padding: 16px;
+  margin: 16px 0;
+  border-left: 3px solid #a4d2ef;
+  background: #111;
+}
+.creation-aside {
+  position: sticky;
+  top: 28px;
+}
+.creation-aside h2 {
+  font-size: 24px;
+  margin-bottom: 14px;
+  overflow-wrap: anywhere;
+}
+.creation-aside p {
+  font-size: 12px;
+  color: #bbb;
+  margin-bottom: 12px;
+}
+.creation-aside .button {
+  margin-top: 14px;
+}
+.creation-card-preview {
+  padding: 16px;
+  margin: 20px 0;
+}
+.day-mode .creation-card-preview {
+  background: #fff;
+}
+.creation-field-preview {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+.creation-side {
+  --side: #94ceff;
+  --side-fill: #94ceff1a;
+  padding: 16px;
+  border: 3px solid var(--side);
+  background: var(--side-fill);
+}
+.creation-side-1 {
+  --side: #fca5a5;
+  --side-fill: #fca5a51a;
+}
+.creation-side-2 {
+  --side: #c5acf5;
+  --side-fill: #c5acf51a;
+}
+.creation-side-3 {
+  --side: #9ee8c7;
+  --side-fill: #9ee8c71a;
+}
+.creation-side h3 {
+  font-size: 15px;
+  color: var(--side);
+  margin-bottom: 12px;
+}
+.creation-slots {
+  display: grid;
+  gap: 8px;
+}
+.creation-slots button {
+  min-width: 0;
+  min-height: 74px;
+  padding: 6px;
+  border: 2px solid var(--side);
+  color: var(--side);
+  background: #000;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.creation-slots small {
+  display: block;
+  font-size: 9px;
+  margin-top: 8px;
+}
+.day-mode .creation-slots button {
+  background: #fff;
+  color: #303030;
+}
+@media (max-width: 1000px) {
+  .creation-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .creation-aside {
+    position: static;
+  }
+  .creation-card-preview {
+    max-width: 260px;
+  }
+}
+@media (max-width: 540px) {
+  .creation-workspace {
+    padding: 14px;
+  }
+  .creation-section {
+    padding: 10px;
+  }
+  .creation-step-row,
+  .creation-effect-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .creation-slots {
+    gap: 4px;
+  }
+  .creation-slots button {
+    font-size: 9px;
+    padding: 3px;
+  }
+}

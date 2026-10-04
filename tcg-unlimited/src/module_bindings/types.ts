@@ -8,18 +8,625 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
 
-export const Message = __t.object('Message', {
-  sender: __t.identity(),
-  sent: __t.timestamp(),
-  text: __t.string(),
+export const ActionInput = __t.object("ActionInput", {
+  actionId: __t.string(),
+  sourceInstanceId: __t.option(__t.u32()),
+  targetSeat: __t.option(__t.u8()),
+  targetInstanceId: __t.option(__t.u32()),
+  slotId: __t.option(__t.string()),
 });
-export type Message = __Infer<typeof Message>;
+export type ActionInput = __Infer<typeof ActionInput>;
 
-export const User = __t.object('User', {
+export const ActionUse = __t.object("ActionUse", {
+  seat: __t.u8(),
+  actionId: __t.string(),
+  cardInstanceId: __t.u32(),
+});
+export type ActionUse = __Infer<typeof ActionUse>;
+
+export const CardCopyLimit = __t.object("CardCopyLimit", {
+  cardId: __t.string(),
+  maximum: __t.u16(),
+});
+export type CardCopyLimit = __Infer<typeof CardCopyLimit>;
+
+export const CardDefinition = __t.object("CardDefinition", {
+  id: __t.string(),
+  formatId: __t.string(),
+  name: __t.string(),
+  get values() {
+    return __t.array(CardValue);
+  },
+  actionIds: __t.array(__t.string()),
+  triggerIds: __t.array(__t.string()),
+});
+export type CardDefinition = __Infer<typeof CardDefinition>;
+
+export const CardEffect = __t.object("CardEffect", {
+  kind: __t.string(),
+  target: __t.string(),
+  amount: __t.i32(),
+  statKey: __t.string(),
+  defenseKey: __t.string(),
+  zone: __t.string(),
+  randomId: __t.string(),
+});
+export type CardEffect = __Infer<typeof CardEffect>;
+
+export const CardField = __t.object("CardField", {
+  key: __t.string(),
+  label: __t.string(),
+  kind: __t.string(),
+});
+export type CardField = __Infer<typeof CardField>;
+
+export const CardFormat = __t.object("CardFormat", {
+  id: __t.string(),
+  name: __t.string(),
+  get fields() {
+    return __t.array(CardField);
+  },
+  buttons: __t.array(__t.string()),
+});
+export type CardFormat = __Infer<typeof CardFormat>;
+
+export const CardSlotPermission = __t.object("CardSlotPermission", {
+  cardId: __t.string(),
+  allowedTypeIds: __t.array(__t.string()),
+});
+export type CardSlotPermission = __Infer<typeof CardSlotPermission>;
+
+export const CardTypeRole = __t.object("CardTypeRole", {
+  formatId: __t.string(),
+  role: __t.string(),
+});
+export type CardTypeRole = __Infer<typeof CardTypeRole>;
+
+export const CardValue = __t.object("CardValue", {
+  key: __t.string(),
+  numberValue: __t.option(__t.i32()),
+  textValue: __t.option(__t.string()),
+});
+export type CardValue = __Infer<typeof CardValue>;
+
+export const Connection = __t.object("Connection", {
+  id: __t.connectionId(),
+  owner: __t.identity(),
+});
+export type Connection = __Infer<typeof Connection>;
+
+export const DeckEntry = __t.object("DeckEntry", {
+  cardId: __t.string(),
+  quantity: __t.u16(),
+});
+export type DeckEntry = __Infer<typeof DeckEntry>;
+
+export const DeckRecipe = __t.object("DeckRecipe", {
+  id: __t.string(),
+  name: __t.string(),
+  get entries() {
+    return __t.array(DeckEntry);
+  },
+});
+export type DeckRecipe = __Infer<typeof DeckRecipe>;
+
+export const DeckRules = __t.object("DeckRules", {
+  minSize: __t.u16(),
+  maxSize: __t.u16(),
+  maxCopies: __t.u16(),
+  get copyLimits() {
+    return __t.array(CardCopyLimit);
+  },
+  allowedFormatIds: __t.array(__t.string()),
+});
+export type DeckRules = __Infer<typeof DeckRules>;
+
+export const DesignerRules = __t.object("DesignerRules", {
+  healthName: __t.string(),
+  playsPerTurn: __t.u16(),
+  get typeRoles() {
+    return __t.array(CardTypeRole);
+  },
+  get slotTypes() {
+    return __t.array(SlotType);
+  },
+  get slots() {
+    return __t.array(SlotDesignation);
+  },
+  get cardSlots() {
+    return __t.array(CardSlotPermission);
+  },
+  get phases() {
+    return __t.array(PhaseActionRules);
+  },
+});
+export type DesignerRules = __Infer<typeof DesignerRules>;
+
+export const DraftRules = __t.object("DraftRules", {
+  draftId: __t.u64(),
+  owner: __t.identity(),
+  get rules() {
+    return DesignerRules;
+  },
+});
+export type DraftRules = __Infer<typeof DraftRules>;
+
+export const FieldDefinition = __t.object("FieldDefinition", {
+  rows: __t.u8(),
+  columns: __t.u8(),
+  get slots() {
+    return __t.array(FieldSlot);
+  },
+});
+export type FieldDefinition = __Infer<typeof FieldDefinition>;
+
+export const FieldSlot = __t.object("FieldSlot", {
+  id: __t.string(),
+  row: __t.u8(),
+  column: __t.u8(),
+  owner: __t.string(),
+  allowedFormatIds: __t.array(__t.string()),
+});
+export type FieldSlot = __Infer<typeof FieldSlot>;
+
+export const GameAction = __t.object("GameAction", {
+  id: __t.string(),
+  label: __t.string(),
+  kind: __t.string(),
+  sourceZone: __t.string(),
+  targetKind: __t.string(),
+  resourceCost: __t.u32(),
+  oncePerTurn: __t.bool(),
+  get conditions() {
+    return __t.array(RuleCondition);
+  },
+  get effects() {
+    return __t.array(CardEffect);
+  },
+});
+export type GameAction = __Infer<typeof GameAction>;
+
+export const GameCoin = __t.object("GameCoin", {
+  id: __t.string(),
+  outcomes: __t.array(__t.string()),
+});
+export type GameCoin = __Infer<typeof GameCoin>;
+
+export const GameConstraint = __t.object("GameConstraint", {
+  id: __t.string(),
+  actionIds: __t.array(__t.string()),
+  get conditions() {
+    return __t.array(RuleCondition);
+  },
+  message: __t.string(),
+});
+export type GameConstraint = __Infer<typeof GameConstraint>;
+
+export const GameDefinition = __t.object("GameDefinition", {
+  get formats() {
+    return __t.array(CardFormat);
+  },
+  get participants() {
+    return ParticipantLimits;
+  },
+  get field() {
+    return FieldDefinition;
+  },
+  get spaces() {
+    return __t.array(GameSpace);
+  },
+  get cards() {
+    return __t.array(CardDefinition);
+  },
+  get actions() {
+    return __t.array(GameAction);
+  },
+  get triggers() {
+    return __t.array(GameTrigger);
+  },
+  get constraints() {
+    return __t.array(GameConstraint);
+  },
+  get dice() {
+    return __t.array(GameDice);
+  },
+  get coins() {
+    return __t.array(GameCoin);
+  },
+  get hand() {
+    return HandSize;
+  },
+  get phases() {
+    return __t.array(TurnPhase);
+  },
+  startingHealth: __t.u32(),
+  victory: __t.string(),
+  get deckRules() {
+    return DeckRules;
+  },
+  get starterDecks() {
+    return __t.array(DeckRecipe);
+  },
+  get setup() {
+    return GameSetup;
+  },
+});
+export type GameDefinition = __Infer<typeof GameDefinition>;
+
+export const GameDice = __t.object("GameDice", {
+  id: __t.string(),
+  count: __t.u8(),
+  sides: __t.u16(),
+});
+export type GameDice = __Infer<typeof GameDice>;
+
+export const GameDraft = __t.object("GameDraft", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  requestId: __t.string(),
+  title: __t.string(),
+  description: __t.string(),
+  get definition() {
+    return GameDefinition;
+  },
+  revision: __t.u32(),
+  validatedRevision: __t.option(__t.u32()),
+  validationError: __t.string(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type GameDraft = __Infer<typeof GameDraft>;
+
+export const GameSetup = __t.object("GameSetup", {
+  startingResource: __t.u32(),
+  turnResource: __t.u32(),
+  turnDraw: __t.u16(),
+});
+export type GameSetup = __Infer<typeof GameSetup>;
+
+export const GameSpace = __t.object("GameSpace", {
+  id: __t.string(),
+  kind: __t.string(),
+  visibility: __t.string(),
+  capacity: __t.u32(),
+});
+export type GameSpace = __Infer<typeof GameSpace>;
+
+export const GameTrigger = __t.object("GameTrigger", {
+  id: __t.string(),
+  event: __t.string(),
+  get conditions() {
+    return __t.array(RuleCondition);
+  },
+  get effects() {
+    return __t.array(CardEffect);
+  },
+});
+export type GameTrigger = __Infer<typeof GameTrigger>;
+
+export const GameVersion = __t.object("GameVersion", {
+  id: __t.u64(),
+  gameId: __t.u64(),
+  version: __t.u32(),
+  draftId: __t.u64(),
+  draftRevision: __t.u32(),
+  get definition() {
+    return GameDefinition;
+  },
+  publishedAt: __t.timestamp(),
+});
+export type GameVersion = __Infer<typeof GameVersion>;
+
+export const HandSize = __t.object("HandSize", {
+  initial: __t.u16(),
+  maximum: __t.u16(),
+});
+export type HandSize = __Infer<typeof HandSize>;
+
+export const Match = __t.object("Match", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  versionId: __t.u64(),
+  get state() {
+    return MatchState;
+  },
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type Match = __Infer<typeof Match>;
+
+export const MatchCardInstance = __t.object("MatchCardInstance", {
+  id: __t.u32(),
+  cardId: __t.string(),
+  ownerSeat: __t.u8(),
+  zone: __t.string(),
+  slotId: __t.string(),
+  position: __t.u32(),
+  get values() {
+    return __t.array(CardValue);
+  },
+});
+export type MatchCardInstance = __Infer<typeof MatchCardInstance>;
+
+export const MatchEvent = __t.object("MatchEvent", {
+  id: __t.u64(),
+  matchId: __t.u64(),
+  revision: __t.u32(),
+  seat: __t.u8(),
+  kind: __t.string(),
+  actionId: __t.string(),
+  get outcomes() {
+    return __t.array(RandomOutcome);
+  },
+  at: __t.timestamp(),
+});
+export type MatchEvent = __Infer<typeof MatchEvent>;
+
+export const MatchHistory = __t.object("MatchHistory", {});
+export type MatchHistory = __Infer<typeof MatchHistory>;
+
+export const MatchPlayerState = __t.object("MatchPlayerState", {
+  seat: __t.u8(),
+  health: __t.i32(),
+  resource: __t.i32(),
+  eliminated: __t.bool(),
+  deckId: __t.u64(),
+  deckRevision: __t.u32(),
+  get deckSnapshot() {
+    return __t.array(DeckEntry);
+  },
+});
+export type MatchPlayerState = __Infer<typeof MatchPlayerState>;
+
+export const MatchPlayers = __t.object("MatchPlayers", {});
+export type MatchPlayers = __Infer<typeof MatchPlayers>;
+
+export const MatchProjection = __t.object("MatchProjection", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  versionId: __t.u64(),
+  status: __t.string(),
+  activeSeat: __t.u8(),
+  phaseIndex: __t.u16(),
+  subPhaseIndex: __t.u16(),
+  turn: __t.u32(),
+  revision: __t.u32(),
+  winnerSeat: __t.option(__t.u8()),
+});
+export type MatchProjection = __Infer<typeof MatchProjection>;
+
+export const MatchRuleProgress = __t.object("MatchRuleProgress", {
+  matchId: __t.u64(),
+  get progress() {
+    return RuleProgress;
+  },
+});
+export type MatchRuleProgress = __Infer<typeof MatchRuleProgress>;
+
+export const MatchState = __t.object("MatchState", {
+  get players() {
+    return __t.array(MatchPlayerState);
+  },
+  get cards() {
+    return __t.array(MatchCardInstance);
+  },
+  activeSeat: __t.u8(),
+  phaseIndex: __t.u16(),
+  subPhaseIndex: __t.u16(),
+  turn: __t.u32(),
+  revision: __t.u32(),
+  status: __t.string(),
+  winnerSeat: __t.option(__t.u8()),
+  get uses() {
+    return __t.array(ActionUse);
+  },
+});
+export type MatchState = __Infer<typeof MatchState>;
+
+export const MyDecks = __t.object("MyDecks", {});
+export type MyDecks = __Infer<typeof MyDecks>;
+
+export const MyDraftRules = __t.object("MyDraftRules", {});
+export type MyDraftRules = __Infer<typeof MyDraftRules>;
+
+export const MyDrafts = __t.object("MyDrafts", {});
+export type MyDrafts = __Infer<typeof MyDrafts>;
+
+export const MyMatches = __t.object("MyMatches", {});
+export type MyMatches = __Infer<typeof MyMatches>;
+
+export const MyMemberships = __t.object("MyMemberships", {});
+export type MyMemberships = __Infer<typeof MyMemberships>;
+
+export const ParticipantLimits = __t.object("ParticipantLimits", {
+  minimum: __t.u8(),
+  maximum: __t.u8(),
+});
+export type ParticipantLimits = __Infer<typeof ParticipantLimits>;
+
+export const PhaseActionRules = __t.object("PhaseActionRules", {
+  phaseId: __t.string(),
+  ordered: __t.bool(),
+  get steps() {
+    return __t.array(PhaseActionStep);
+  },
+});
+export type PhaseActionRules = __Infer<typeof PhaseActionRules>;
+
+export const PhaseActionStep = __t.object("PhaseActionStep", {
+  id: __t.string(),
+  kind: __t.string(),
+  formatId: __t.string(),
+  maximum: __t.u16(),
+});
+export type PhaseActionStep = __Infer<typeof PhaseActionStep>;
+
+export const PhaseStepCount = __t.object("PhaseStepCount", {
+  stepId: __t.string(),
+  count: __t.u16(),
+});
+export type PhaseStepCount = __Infer<typeof PhaseStepCount>;
+
+export const PlayerProjection = __t.object("PlayerProjection", {
+  id: __t.string(),
+  matchId: __t.u64(),
+  seat: __t.u8(),
+  health: __t.i32(),
+  resource: __t.i32(),
+  eliminated: __t.bool(),
+  handCount: __t.u16(),
+  deckCount: __t.u16(),
+});
+export type PlayerProjection = __Infer<typeof PlayerProjection>;
+
+export const PublishedGame = __t.object("PublishedGame", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  title: __t.string(),
+  description: __t.string(),
+  latestVersionId: __t.u64(),
+  createdAt: __t.timestamp(),
+});
+export type PublishedGame = __Infer<typeof PublishedGame>;
+
+export const RandomOutcome = __t.object("RandomOutcome", {
+  randomId: __t.string(),
+  rolls: __t.array(__t.u16()),
+  coin: __t.string(),
+});
+export type RandomOutcome = __Infer<typeof RandomOutcome>;
+
+export const Room = __t.object("Room", {
+  id: __t.u64(),
+  host: __t.identity(),
+  requestId: __t.string(),
+  versionId: __t.u64(),
+  name: __t.string(),
+  status: __t.string(),
+  playerCount: __t.u8(),
+  matchId: __t.option(__t.u64()),
+  createdAt: __t.timestamp(),
+});
+export type Room = __Infer<typeof Room>;
+
+export const RoomMember = __t.object("RoomMember", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  owner: __t.identity(),
+  seat: __t.u8(),
+  deckId: __t.option(__t.u64()),
+  deckRevision: __t.option(__t.u32()),
+  ready: __t.bool(),
+});
+export type RoomMember = __Infer<typeof RoomMember>;
+
+export const RoomParticipantProjection = __t.object("RoomParticipantProjection", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  owner: __t.identity(),
+  seat: __t.u8(),
+  ready: __t.bool(),
+  hasDeck: __t.bool(),
+});
+export type RoomParticipantProjection = __Infer<typeof RoomParticipantProjection>;
+
+export const RoomParticipants = __t.object("RoomParticipants", {});
+export type RoomParticipants = __Infer<typeof RoomParticipants>;
+
+export const RuleCondition = __t.object("RuleCondition", {
+  kind: __t.string(),
+  target: __t.string(),
+  value: __t.i32(),
+  key: __t.string(),
+});
+export type RuleCondition = __Infer<typeof RuleCondition>;
+
+export const RuleProgress = __t.object("RuleProgress", {
+  turn: __t.u32(),
+  phaseIndex: __t.u16(),
+  plays: __t.u16(),
+  get counts() {
+    return __t.array(PhaseStepCount);
+  },
+  lastStep: __t.i16(),
+});
+export type RuleProgress = __Infer<typeof RuleProgress>;
+
+export const SavedDeck = __t.object("SavedDeck", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  versionId: __t.u64(),
+  requestId: __t.string(),
+  name: __t.string(),
+  get entries() {
+    return __t.array(DeckEntry);
+  },
+  revision: __t.u32(),
+  complete: __t.bool(),
+  updatedAt: __t.timestamp(),
+});
+export type SavedDeck = __Infer<typeof SavedDeck>;
+
+export const SlotDesignation = __t.object("SlotDesignation", {
+  slotId: __t.string(),
+  typeId: __t.string(),
+});
+export type SlotDesignation = __Infer<typeof SlotDesignation>;
+
+export const SlotType = __t.object("SlotType", {
+  id: __t.string(),
+  name: __t.string(),
+});
+export type SlotType = __Infer<typeof SlotType>;
+
+export const SubPhase = __t.object("SubPhase", {
+  id: __t.string(),
+  name: __t.string(),
+  allowedActionIds: __t.array(__t.string()),
+});
+export type SubPhase = __Infer<typeof SubPhase>;
+
+export const TurnPhase = __t.object("TurnPhase", {
+  id: __t.string(),
+  name: __t.string(),
+  allowedActionIds: __t.array(__t.string()),
+  get subPhases() {
+    return __t.array(SubPhase);
+  },
+});
+export type TurnPhase = __Infer<typeof TurnPhase>;
+
+export const User = __t.object("User", {
   identity: __t.identity(),
   name: __t.option(__t.string()),
-  online: __t.bool(),
 });
 export type User = __Infer<typeof User>;
+
+export const VersionRules = __t.object("VersionRules", {
+  versionId: __t.u64(),
+  get rules() {
+    return DesignerRules;
+  },
+});
+export type VersionRules = __Infer<typeof VersionRules>;
+
+export const VisibleCardProjection = __t.object("VisibleCardProjection", {
+  id: __t.string(),
+  matchId: __t.u64(),
+  instanceId: __t.u32(),
+  cardId: __t.string(),
+  ownerSeat: __t.u8(),
+  zone: __t.string(),
+  slotId: __t.string(),
+  position: __t.u32(),
+  get values() {
+    return __t.array(CardValue);
+  },
+});
+export type VisibleCardProjection = __Infer<typeof VisibleCardProjection>;
+
+export const VisibleMatchCards = __t.object("VisibleMatchCards", {});
+export type VisibleMatchCards = __Infer<typeof VisibleMatchCards>;
+
