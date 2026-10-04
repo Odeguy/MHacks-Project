@@ -3536,6 +3536,85 @@ h1,
     gap: 16px;
 }
 
+.match-table-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.match-table-layout.has-card-preview {
+    grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.match-card-preview {
+    position: sticky;
+    top: 20px;
+    padding: 16px;
+    min-width: 0;
+}
+
+.match-card-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.match-card-preview .card-frame {
+    aspect-ratio: auto;
+}
+
+.match-card-preview .playing-card {
+    min-height: 400px;
+    height: auto;
+    padding: 16px;
+    grid-template-rows: auto auto minmax(150px, auto) auto;
+    gap: 16px;
+}
+
+.match-card-preview .playing-card-top,
+.match-card-preview .card-stats {
+    font-size: 12px;
+}
+
+.match-card-preview .playing-card > h3 {
+    font-size: 28px;
+    overflow-wrap: anywhere;
+}
+
+.match-card-preview .playing-card > p {
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.match-card-preview .playing-card:has(.card-resource-costs) {
+    grid-template-rows: auto auto minmax(150px, auto) auto;
+}
+
+.match-card-preview .card-stats {
+    flex-wrap: wrap;
+    padding-top: 12px;
+}
+
+.day-mode .match-card-preview {
+    background: #fff;
+    color: #303030;
+}
+
+@media (max-width: 1000px) {
+    .match-table-layout.has-card-preview {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .match-card-preview {
+        position: static;
+        width: min(100%, 360px);
+        justify-self: center;
+    }
+}
+
 .match-action-panel {
     margin-top: 20px;
     display: flex;

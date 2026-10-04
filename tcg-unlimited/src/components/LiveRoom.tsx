@@ -23,6 +23,16 @@ export default function LiveRoom() {
   const [targetSeat, setTargetSeat] = useState<number | undefined>();
   const [targetCard, setTargetCard] = useState<number | undefined>();
   const [slotId, setSlotId] = useState<string | undefined>();
+  const [inspectedId, setInspectedId] = useState<number | undefined>();
+  useEffect(() => setInspectedId(undefined), [roomId]);
+  useEffect(() => {
+    if (inspectedId === undefined) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setInspectedId(undefined);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [inspectedId]);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -84,6 +94,7 @@ export default function LiveRoom() {
   const visible = data.visibleCards.filter(
     (item) => item.matchId === match?.id,
   );
+  const inspected = visible.find((card) => card.instanceId === inspectedId);
   const me = players.find((player) => player.seat === member?.seat);
   const opponents = players.filter((player) => player.seat !== member?.seat);
   const compatible = data.decks.filter(
@@ -480,6 +491,7 @@ export default function LiveRoom() {
                 ))}
             </section>
           )}
+        <div className={`match-table-layout ${inspected ? "has-card-preview" : ""}`}>
           <div className="table-scene live-table">
             <div className="opponent-status">
               {opponents.map((player) => (
@@ -576,9 +588,8 @@ export default function LiveRoom() {
                                   : `Play in ${slotName} (${row + 1}, ${column + 1}), player ${player.seat + 1}`
                               }
                               disabled={
-                                !canAct ||
-                                data.pending ||
-                                (!card &&
+                                !card &&
+                                  (!canAct || data.pending ||
                                   (!mine ||
                                     !source ||
                                     !canPlace ||
@@ -586,6 +597,8 @@ export default function LiveRoom() {
                               }
                               onClick={() => {
                                 if (card) {
+                                  setInspectedId(card.instanceId);
+                                  if (!canAct || data.pending) return;
                                   if (card.ownerSeat === member.seat)
                                     selectSource(card);
                                   else {
@@ -632,8 +645,11 @@ export default function LiveRoom() {
                   }}
                   whileHover={{ y: -18 }}
                   animate={{ y: sourceId === card.instanceId ? -22 : 0 }}
-                  onClick={() => selectSource(card)}
-                  disabled={!myTurn || !!reactionWindow || data.pending}
+                  onClick={() => {
+                    setInspectedId(card.instanceId);
+                    if (myTurn && !reactionWindow && !data.pending)
+                      selectSource(card);
+                  }}
                   aria-label={`Select ${renderCard(card).name} from hand`}
                   aria-pressed={sourceId === card.instanceId}
                 >
@@ -655,6 +671,22 @@ export default function LiveRoom() {
                     : "WAITING FOR YOUR TURN"}
             </p>
           </div>
+          {inspected && (
+            <aside className="panel match-card-preview" aria-label="Card preview">
+              <div className="match-card-preview-heading">
+                <span className="micro">CARD</span>
+                <button
+                  className="icon-button"
+                  aria-label="Close card preview"
+                  onClick={() => setInspectedId(undefined)}
+                >
+                  <Icon name="close" size={18} />
+                </button>
+              </div>
+              <PlayingCard card={renderCard(inspected)} />
+            </aside>
+          )}
+        </div>
           <div className="panel match-action-panel">
             <label className="form-label">
               Action
